@@ -1,12 +1,11 @@
 #!/usr/bin/env python
 # Creates a session for the genome browser
 import sys,os
-
+URL_PREFIX = 'http://kryweb.ucsf.edu/data'
+URL_SEP ='/'
 
 def main():
 	'''the main function'''
-	url_prefix = 'http://kryweb.ucsf.edu/data'
-	url_sep='/'
 
 	if len(sys.argv) == 1:
 		sys.stderr.write( 'Usage: ./convertSamToBam.py file1.bam file2.bam ...' + os.linesep )
@@ -19,29 +18,37 @@ def main():
 				+ os.curdir + os.sep + filename \
 				+ '). Exiting...' + os.linesep)
 			sys.exit(1)
-		url_parts = filename.split(os.sep)
-		filename_parts = url_parts[-1].split(os.extsep)
-		if not filename_parts[-1]=='bam': continue
 
-		uniqueness = url_parts[-2]
-		genome = url_parts[-3]
-		parent_folder = url_parts[-4]
-		sample_name = filename_parts[0]
-		display_name_parts = [sample_name]
-
-		if filename_parts[-2]=='all' or filename_parts[-2].startswith('barcode'):
-			display_name_parts.extend(['.', filename_parts[-2]])
-
-		display_name_parts.extend([' ','(', parent_folder, '/', uniqueness, ')'])
-		display_name = ''.join(display_name_parts)
-
-		full_url = url_sep.join([url_prefix]+url_parts[-4:])
-		print ' '.join([ \
-		'track','type=bam','name="'+ display_name + '"', \
-		'bigDataUrl="' + full_url + '"', \
-		'description="' + url_parts[-1] + '"', \
-		'visibility=squish','db=' + genome ,\
-		'bamColorMode=strand' \
-		])
+        track_line = get_track_line(filename)
+        if track_line is not None: print track_line
 	
+def get_track_line(filename):
+    url_parts = filename.split(os.sep)
+    filename_parts = url_parts[-1].split(os.extsep)
+    file_extension = filename_parts[-1]
+
+    uniqueness = url_parts[-2]
+    genome = url_parts[-3]
+    parent_folder = url_parts[-4]
+    sample_name = filename_parts[0]
+    display_name_parts = [sample_name]
+
+    if filename_parts[-2]=='all' or filename_parts[-2].startswith('barcode'):
+        display_name_parts.extend(['.', filename_parts[-2]])
+
+    display_name_parts.extend([' ','(', parent_folder, '/', uniqueness, ')'])
+    display_name = ''.join(display_name_parts)
+
+    full_url = URL_SEP.join([URL_PREFIX]+url_parts[-4:])
+
+    if filename_extension=='bam':
+        track_line = ' '.join(['track', 'type=bam',
+                               'name="'+ display_name + '"',
+                               'bigDataUrl="' + full_url + '"',
+                               'description="' + url_parts[-1] + '"',
+                               'visibility=squish', 'db=' + genome ,
+                               'bamColorMode=strand'])
+
+    return track_line
+
 if __name__=='__main__': main()

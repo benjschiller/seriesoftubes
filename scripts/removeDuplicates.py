@@ -13,6 +13,7 @@ scripter.TARGET_DIR = 'unique_tags.BAM'
 PATH_TO_SAMTOOLS = '/usr/local/bin/samtools'
 
 def remove_duplicates(parsed_filename, **kwargs):
+    if not parsed_filename.file_extension=='bam': return
     stdout_buffer = ''
 
     steps = []
@@ -26,7 +27,12 @@ def remove_duplicates(parsed_filename, **kwargs):
         job = subprocess.Popen(step, stdout=subprocess.PIPE, 
                                stderr=subprocess.STDOUT)
         (stdout_data, stderr_data) = job.communicate()
-        stdout_buffer = os.linesep.join([stdout_buffer, '', '', 
+
+        if stdout_data.strip()=='':
+            stdout_buffer = os.linesep.join([stdout_buffer, '', '', 
+                                         ' '.join(step)])
+        else:
+            stdout_buffer = os.linesep.join([stdout_buffer, '', '', 
                                          ' '.join(step), '', stdout_data])
     return stdout_buffer
 

@@ -28,7 +28,8 @@ def main():
 	      author_email='benjamin.schiller@ucsf.edu',
 	      packages = [],
 	      package_dir = {},
-          scripts = [os.path.join('scripts/', x) for x in os.listdir('scripts')]
+          scripts = [os.path.join('scripts/', x) for x in os.listdir('scripts') 
+                     if not x.startswith('.')]
 	      )
 if __name__ == '__main__':
 	main()
