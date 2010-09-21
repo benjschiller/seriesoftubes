@@ -13,8 +13,6 @@ calls peaks using MACS
 import sys
 import os
 import subprocess
-import time
-import pkg_resources
 import scripter
 scripter.SCRIPT_DOC = __doc__
 scripter.SCRIPT_VERSION = "2.4"
@@ -95,7 +93,7 @@ def _print_debug(*args):
 
 def action(parsed_filename, debug=False, silent=False,
            wig=True, single_wig=True, diag=True, subpeaks=True,
-           make_pdf=True, fix_only=False, fix=True,**kwargs):
+           make_pdf=True, fix_only=False, fix=True, **kwargs):
     """Run MACS on a BAM file and produce the pdf from the .R model"""
     if fix_only:
         return fix_subpeaks_filename(parsed_filename)
