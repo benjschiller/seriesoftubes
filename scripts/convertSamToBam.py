@@ -31,23 +31,46 @@ def convert_sam_to_bam(parsed_filename, verbose=False, debug=False, **kwargs):
                           'to temporary BAM file', parsed_filename.temp_file)
     # this methods raises an error, we need to catch it
     try:
-        pysam.view('-b', '-S', '-o' + parsed_filename.temp_file, 
+        converting = pysam.view('-b', '-S', '-o' + parsed_filename.temp_file, 
                    parsed_filename.input_file)
     except pysam.SamtoolsError, converting_error:
         converting = str(converting_error)
         if not converting.startswith("'[samopen]"):
             raise converting_error
+    if type(converting) is list: list = os.linesep.join(list)
+    elif converting is None: converting = ''
     if debug: print_debug(converting)
 
     if debug: print_debug('Sorting BAM file...')
-    sorting = pysam.sort(parsed_filename.temp_file,
-                         os.path.splitext(parsed_filename.output_file)[0])
-    sorting = os.linesep.join(sorting)
+    try:
+        sorting = pysam.sort(parsed_filename.temp_file,
+                             os.path.splitext(parsed_filename.output_file)[0])
+    except pysam.SamtoolsError, sorting_error:
+        if not sorting_error.startswith('[bam_sort_core] merging'):
+            raise sorting_error
+    if type(sorting) is list: sorting = os.linesep.join(sorting)
+    elif sorting is None: sorting = ''
     if debug: print_debug(sorting)
 
     if debug: print_debug('Indexing sorted BAM file...')
-    indexing = pysam.index(parsed_filename.output_file)
-    indexing = os.linesep.join(indexing)
+    try:
+        indexing = pysam.index(parsed_filename.output_file)
+    except pysam.SamtoolsError, indexing_error:
+        # right now this is just a placeholder
+        if not indexing_error.startswith(''):
+            raise indexing_error
+    if type(indexing) is list: indexing = os.linesep.join(indexing)
+    elif indexing is None: indexing = ''
+    if debug: print_debug(sorting)
+
+    if debug: print_debug('Indexing sorted BAM file...')
+    try:
+        indexing = pysam.index(parsed_filename.output_file)
+    except pysam.SamtoolsError, indexing_error:
+        # right now this is just a placeholder
+        if not indexing_error.startswith(''):
+            raise indexing_error
+    if type(indexing) is lis
     if debug: print_debug(indexing)
 
     if debug: print_debug('Removing temporary file', parsed_filename.temp_file)
