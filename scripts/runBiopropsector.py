@@ -19,6 +19,9 @@ default target: motifs.Bioprospector
 --pre-background-file=foo   use precomputed background model in file foo
 --background-only           only compute the background model,
                             do not find motifs
+--background                compute and save the background model
+                                (otherwise I think bioprospector does it
+                                 on the fly)
 --oops                      assume exactly one motif per sequence
 --num-iters=#               try to find each motif # times
 --num-motifs=#              report the # best motifs
@@ -31,37 +34,31 @@ from Bioprospector (these flags will be based along)
 '''
 import os
 import subprocess
+import StringIO
 import scripter
-from scripter import Usage
+import Bio.SeqIO
+from scripter import Usage, valid_int, print_debug, extend_buffer
 scripter.SCRIPT_DOC = __doc__
 scripter.SCRIPT_VERSION = "2.2"
 scripter.SOURCE_DIR = 'peaks.FASTA'
 scripter.TARGET_DIR = 'motifs.Bioprospector'
 scripter.ALLOWED_EXTENSIONS = ['fa','fasta','FA','FASTA']
-scripter.SCRIPT_LONG_OPTS = ["GR", "width=", "second-width=",
+BOOLEAN_OPTS = ["GR", "degenerate", "palindrome", "oops", "background-only",
+                "background", "no-reverse-complement"]
+scripter.SCRIPT_LONG_OPTS = ["width=", "second-width=",
                              "background-file=", "pre-background-file=",
                              "gap=", "min-gap=", "max-gap="
-                             "num-iters=", "num-motifs=",
-                             "degenerate", "palindrome", "oops",
-                             "no-reverse-complement"]
+                             "num-iters=", "num-motifs="] + BOOLEAN_OPTS
 
-PATH_TO_BIOPROSPECTOR = "/usr/local/bin/Bioprospector"
-PATH_TO_GENOMEBG = "/usr/local/bin/genomebg"
+global PATH_TO_BIN
+global BIOPROSPECTOR_NAME
+global GENOMEBG_NAME
+PATH_TO_BIN = "/usr/local/bin"
+BIOPROSPECTOR_NAME = "Bioprospector"
+GENOMEBG_NAME = "genomebg"
 
-def valid_something(thing, msg, vmin, vmax):
-    """
-    checks if something is a valid integer
-    and thing >= vmin and thing <= vmax
-
-    returns the thing as an integer
-    """
-    try:
-        int_thing = int(thing)
-    except ValueError:
-        raise Usage(msg)
-    if int_thing < vmin or int_thing > vmax:
-        raise Usage(msg)
-    return int_thing
+def path_to_executable(name, directory=PATH_TO_BIN):
+    return scripter.path_to_executable(name, directory=directory)
 
 def valid_gap(gap, gap_type=""):
     """
@@ -70,7 +67,7 @@ def valid_gap(gap, gap_type=""):
     """
     msg = ' '.join([gap_type, " must be an integer 0 - 50"])
  
-    return valid_something(gap, msg, 0, 50)
+    return valid_int(gap, msg, 0, 50)
 
 def valid_width(width, width_type=""):
     """
@@ -78,26 +75,24 @@ def valid_width(width, width_type=""):
     returns the width as an integer
     """
     msg = ' '.join([width_type, "width must be an integer 4 - 50"])
-    return valid_something(width, msg, 4, 50)
+    return valid_int(width, msg, 4, 50)
 
 def valid_num_iters(num_iters):
     msg = "num-iters must be an integer 1 - 200"
-    return valid_something(num_iters, msg, 1, 200)
+    return valid_int(num_iters, msg, 1, 200)
 
-def valid_num_motifs(num_motifs, num_iters)
+def valid_num_motifs(num_motifs, num_iters):
     msg = "num-motifs must be an integer 1 - " + num_iters
-    return valid_something(num_motifs, msg, 1, num_iters)
+    return valid_int(num_motifs, msg, 1, num_iters)
 
 def check_script_options(options, debug=False):
     bpopts = {}
 
-    if options.has_key("background-only"):
-        bpopts["background_only"] = True
-        return bpopts
-    else:
-        bpopts["background_only"] = False
+    for option in BOOLEAN_OPTS:
+        pyoption = "_".join(option.split("-"))
+        bpopts[pyoption] = options.has_key(option)
 
-    bpopts["GR"] = options.has_key("GR")
+    if bpopts["background_only"]: return bpopts
 
     # parse width, second_width
     if options.has_key("width"):
@@ -105,7 +100,7 @@ def check_script_options(options, debug=False):
         bpopts["width"] = str(width)
     else:
         bpopts["width"] = "10"
-    if options.has_key("second-width")
+    if options.has_key("second-width"):
         second_width = valid_width(options["second-width"])
         bpopts["width"] = str(second_width)
     else:
@@ -127,20 +122,7 @@ def check_script_options(options, debug=False):
             raise Usage("max-gap - min-gap must be smaller than 20")
         bpopts["min_gap"] = str(min_gap)
         bpopts["max_gap"] = str(max_gap)
-    elif options.has_key("max-gap"):def valid_something(thing, msg, vmin, vmax):
-    """
-    checks if something is a valid integer
-    and thing >= vmin and thing <= vmax
-
-    returns the thing as an integer
-    """
-    try:
-        int_thing = int(thing)
-    except ValueError:
-        raise Usage(msg)
-    if int_thing < vmin or int_thing > vmax:
-        raise Usage(msg)
-    return int_thing
+    elif options.has_key("max-gap"):
         max_gap = valid_gap(options["max-gap"], "max-gap")
         min_gap = max(max_gap - 19, 0)
         bpopts["min_gap"] = str(min_gap)
@@ -154,72 +136,69 @@ def check_script_options(options, debug=False):
         bpopts["min_gap"] = "0" 
         bpopts["max_gap"] = "0"
 
-    # check if palindrome
-    bpopts["palindrome"] = options.has_key("palindrome")
-
     # check background file
     if options.has_key("background-file") and \
-       options.has_key("pre-background-file"):
+        options.has_key("pre-background-file"):
         raise Usage("Do not use both background-file and pre-backround-file")
     elif options.has_key("background-file"):
         bg_file = options["background-file"]
         if not os.path.exists(bg_file):
-            raise Usage(bg_file "does not exist or could not be read")
+            raise Usage(bg_file, "does not exist or could not be read")
         bpopts["background_file"] = bg_file
     elif options.has_key("pre-background-file"):
         pre_bg_file = options["pre-background-file"]
         if not os.path.exists(pre_bg_file):
-            raise Usage(pre_bg_file "does not exist or could not be read")
-        bpopts["pre_background_file"] = preb_g_file
+            raise Usage(pre_bg_file, "does not exist or could not be read")
+        bpopts["pre_background_file"] = pre_bg_file
 
-    # check if oops
-        bpopts["oops"] = options.has_key("oops")
-        
     # check how many iterations
     if options.has_key("num-iters"):
         num_iters = valid_iters(options["num-iters"])
         bpopts["num_iters"] = str(num_iters)
+    else:
+        num_iters = 40
+        bpopts["num_iters"] = str(num_iters)
 
     # check how many motifs to report
-    if options.has_key("num-motifs")
+    if options.has_key("num-motifs"):
         num_motifs = valid_num_motifs(options["num-motifs"], num_iters)
         bpopts["num_motifs"] = str(num_motifs)
     elif num_iters < 5:
         bpopts["num_motifs"] = str(num_motifs)
-/usr/local/bin/Bioprospector
 
-    # check if we have a very degenerate motif
-    bpopts["degenerate"] = options.has_key("degenerate")
-
-    # check if we need to search both strands
-    bpopts["no_rc"] = options.has_key("no-reverse-complement")
-
-    return specific_options
+    return bpopts
 
 def _oj(a,b):
-    "option join
+    """"
+    option join
     a,b -> -a b
-    "
+    """
     return "".join(["-", a, " ", b])
 
-def action(parsed_filename, background_only="False",
-           path_to_bioprospector=PATH_TO_BIOPROSPECTOR
+def action(parsed_filename, background=False, background_only="False",
+           path_to_bioprospector=path_to_executable(BIOPROSPECTOR_NAME),
            pre_background_file=None, background_file=None,
-           debug=False, width="10", second_width="0"
+           debug=False, width="10", second_width="0",
            min_gap="0", max_gap="0",
            num_iters="40", num_motifs="5", oops=False, 
-           degenerate = False, no_rc=False, palindrome=False
+           degenerate = False, no_reverse_complement=False, palindrome=False,
            **kwargs):
     """
     """
-    if parsed_filename.protoname.endswith("_subpeaks")
+    stdout_buffer =  ""
+    if parsed_filename.protoname.endswith("_subpeaks"):
+        pass
+        # do something?
     if background_only: return compute_background(parsed_filename)
+    if background:
+        stdout_buffer = extend_buffer(stdout_buffer,
+                                      compute_background(parsed_filename), 2)
     if GR:
         oops = True
         width = "17"
 
     bp_options = [_oj("W",width), _oj("w", second_width),
-                  _oj("n", num_iters), _oj("r", num_motifs)
+                  _oj("n", num_iters), _oj("r", num_motifs),
                   _oj("G", max_gap), _oj("g", min_gap)]
     if pre_background_file is not None:
         bp_options.append(_oj("f", pre_background_file))
@@ -229,14 +208,34 @@ def action(parsed_filename, background_only="False",
     if no_rc: bp_options.append(_oj("d", 1))
     if oops: bp_options.append(_oj("a", 1))
     if degenerate: bp_options.append(_oj("h", 1))
-    stdout_buffer =  ""
     return stdout_buffer
 
-def compute_background(parsed_filename, path_to_genomebg=PATH_TO_GENOMEBG):
+def compute_background(parsed_filename,
+                       path_to_genomebg=path_to_executable(GENOMEBG_NAME)):
     """compute the background model with genomebg"""
     stdout_buffer =  ""
+
+    bg_output_file = os.path.join(parsed_filename.output_dir,
+                                  os.extsep.join([parsed_filename.protoname,
+                                                  "background"]))
+
+    input_ = StringIO.StringIO()
+    fasta_records = Bio.SeqIO.parse(open(parsed_filename.input_file), "fasta")
+    for r in fasta_records:
+        input_.writelines([">", r.description, os.linesep,
+                           str(r.seq), os.linesep])
+    input_.seek(0)
+    step = path_to_genomebg + ["-i", "/dev/stdin"]
+    job = subprocess.Popen(step,
+                           stdin=input_,
+                           stdout=open(bg_output_file, 'w'),
+                           stderr=subprocess.PIPE)
+    (stdout_data, stderr_data) = job.communicate()
+    stdout_buffer = extend_buffer(stdout_buffer, ' '.join(step))
+    stdout_buffer = extend_buffer(stdout_buffer, stderr_data, 1)
+
     return stdout_buffer
 
 if __name__=="__main__":
     scripter.check_script_options = check_script_options
-    scripter.perform(action, FilenameParser)
+    scripter.perform(action)

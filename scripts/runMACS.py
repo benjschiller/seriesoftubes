@@ -14,6 +14,7 @@ import sys
 import os
 import subprocess
 import scripter
+from scripter import path_to_executable
 scripter.SCRIPT_DOC = __doc__
 scripter.SCRIPT_VERSION = "2.4"
 scripter.SOURCE_DIR = 'alignments.BAM'
@@ -21,9 +22,6 @@ scripter.TARGET_DIR = 'fromBAM.macs'
 scripter.ALLOWED_EXTENSIONS = ['bam']
 scripter.SCRIPT_LONG_OPTS = ["no-wig", "no-diag", "chrom-wigs", "subpeaks",
                              "no-pdf", "fix-only", "no-fix"]
-
-PATH_TO_MACS = '/Library/Frameworks/Python.framework/Versions/2.7/bin/macs14'
-PATH_TO_R = '/usr/bin/R64'
 
 # HARDCODED CONTROLS #
 CONTROLS = {
@@ -93,7 +91,10 @@ def _print_debug(*args):
 
 def action(parsed_filename, debug=False, silent=False,
            wig=True, single_wig=True, diag=True, subpeaks=True,
-           make_pdf=True, fix_only=False, fix=True, **kwargs):
+           make_pdf=True, fix_only=False, fix=True, 
+           path_to_macs=path_to_executable(["macs14", "macs"]),
+           path_to_R=path_to_executable(["R64", "R"]),
+           **kwargs):
     """Run MACS on a BAM file and produce the pdf from the .R model"""
     if fix_only:
         return fix_subpeaks_filename(parsed_filename)
@@ -118,7 +119,7 @@ def action(parsed_filename, debug=False, silent=False,
         macs_options.append(_join_opt('--control',
                                 _prepend_cwd(parsed_filename.control_file)))
 
-    step = [PATH_TO_MACS] + macs_options
+    step = [path_to_macs] + macs_options
 
     if debug: _print_debug('Launching', ' '.join(step))
     job = subprocess.Popen(step,
@@ -145,7 +146,7 @@ def action(parsed_filename, debug=False, silent=False,
                 _print_debug('Warning:', R_file, 'does not exist')
         else:
             R_pointer = open(R_file)
-            step =[PATH_TO_R, '--vanilla'] 
+            step =[path_to_R, '--vanilla'] 
             job = subprocess.Popen(step,
                                    stdout=subprocess.PIPE,
                                    stderr=subprocess.STDOUT,

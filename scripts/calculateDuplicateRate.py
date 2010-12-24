@@ -6,53 +6,48 @@ import os
 import subprocess
 import collections
 import scripter
+import pysam
 scripter.SCRIPT_DOC = __doc__
-scripter.SCRIPT_VERSION = "2.1"
+scripter.SCRIPT_VERSION = "2.2"
 scripter.SOURCE_DIR = 'alignments.BAM'
 scripter.TARGET_DIR = 'duplicate.rates'
 
-PATH_TO_SAMTOOLS='/usr/local/bin/samtools'
-
-def calculate_duplicates(parsed_filename, **kwargs):
+def calculate_duplicates(parsed_filename, debug=False, **kwargs):
     '''
     note: you must be looking at a sorted file, or this won't work
     and you should not use random alignments, because this will not be accurate
     '''
-    if not parsed_filename.file_extension == 'bam': return ''
-    contents = subprocess.Popen([PATH_TO_SAMTOOLS, 'view',
-                                 parsed_filename.input_file], 
-                                 stdout=subprocess.PIPE)
-    content_stream = contents.stdout
-    return actually_calculate_duplicates(parsed_filename,
-                                         content_stream, **kwargs)
+    try: bam_file = pysam.Samfile(parsed_filename.input_file, 'rb')
+    except: return
 
-def actually_calculate_duplicates(parsed_filename, content_stream, 
-                                  debug=False, **kwargs):
-    these_coords = ('', '')
+    current_frag = ('', 0, '', 0)
     d = collections.defaultdict(lambda: 0)
-    dup_counter = 0
+    dup_counter = 1
+    unaligned = 0
 
-    for line in content_stream:
-        previous_coords = these_coords
-        ref_name = line.split()[2]
-        ref_coord = line.split()[3]
-        these_coords = (ref_name, ref_coord)
-        if ref_name == '*':
-            dup_counter = 0
+    for read in bam_file:
+        # skip mate if it exists
+        if read.is_paired and read.is_read2:
             continue
+        # break if we've reached unaligned reads (end of file)
+        if read.rname is -1:
+            d[dup_counter] += 1
+            unaligned = 1
+            break
 
-        if previous_coords == these_coords:
-            # increment the duplicate counter
+        last_frag = current_frag
+        current_frag = (read.rname, read.pos, read.mrnm, read.mpos)
+
+        # check if the FULL fragment is identical
+        # if so, increment the duplicate counter
+        if current_frag == last_frag:
             dup_counter += 1
+        # if not, increment the dictionary and reset the counter
         else:
-            # Check if we were looking at duplicates
-            if dup_counter > 0: d[dup_counter] += 1
-            # Reset the duplicate counter
-            dup_counter = 0
-            # Increment the number of 1-time occurrences
-            d[1] += 1
+            d[dup_counter] += 1
+            dup_counter = 1
 
-    if dup_counter > 0: d[dup_counter] += 1
+    for read in bam_file: unaligned += 1
 
     unique_tags = sum(d.values())
     total_tags = sum([k * v for k, v in d.items()])
@@ -73,6 +68,8 @@ def actually_calculate_duplicates(parsed_filename, content_stream,
                                  str(float(unique_tags)/float(total_tags))]))
     output_file.write(os.linesep)
     output_file.write('\t'.join(['Total', str(total_tags), '1.0']))
+    output_file.write(os.linesep)
+    output_file.write('\t'.join(['Unaligned', str(unaligned), '-']))
     output_file.write(os.linesep)
 
     output_file.close()
