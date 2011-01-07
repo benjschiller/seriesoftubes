@@ -3,7 +3,10 @@
 Converts SAM to BAM files
 and also builds an index for the BAM files
 
-Default options: --target=alignments.BAM
+--no-unmapped   do not produce BAM files with only unmapped reads
+--no-mapped     do not produce BAM files with only mapped reads
+
+Default options: --source=alignments.SAM --target=alignments.BAM
 '''
 import os
 import subprocess
@@ -11,9 +14,20 @@ import scripter
 from scripter import print_debug
 import pysam
 scripter.SCRIPT_DOC = __doc__
-scripter.SCRIPT_VERSION = "2.2"
+scripter.SCRIPT_VERSION = "2.3"
 scripter.SOURCE_DIR = 'alignments.SAM'
 scripter.TARGET_DIR = 'alignments.BAM'
+scripter.SCRIPT_LONG_OPTS = ["extra-samtools-options="]
+
+def check_script_options(options):
+     specific_options = {}
+     if options.has_key('extra-samtools-options'):
+         specific_options['extra_samtools_options'
+                          ] = options['extra-samtools-options'].strip().split()
+     else:
+         specific_options['extra_samtools_options'] = []
+
+     return specific_options
 
 class FilenameParser(scripter.FilenameParser):
     def __init__(self, filename, *args, **kwargs):
@@ -23,54 +37,60 @@ class FilenameParser(scripter.FilenameParser):
         self.output_file = f('bam')
         self.temp_file = f('tmp')
 
-def convert_sam_to_bam(parsed_filename, verbose=False, debug=False, **kwargs):
+def pysam_wrapper(pysam_args, pysam_func=None, expected_error='',
+                  except_merging=True):
+    '''wraps a pysam function, captures errors that match an expected error
+       string (if not provided, captures all SamtoolsError's)
+       and then returns the error string
+
+       or if there was no error, it returns the output as a string
+
+       this function guarantees you a string, altho it may throw an exception
+    '''
+    try:
+        execution = pysam_func(*pysam_args)
+    except pysam.SamtoolsError, execution_error:
+        execution = str(execution_error)
+        if execution.lstrip("'").startswith(expected_error):
+            pass
+        elif except_merging and 'merging from' in execution:
+            pass
+        else:
+            raise pysam.SamtoolsError(execution)
+
+    if type(execution) is list:
+        if len(execution) is 0: return ''
+        else: return os.linesep.join(execution)
+    elif type(execution) is str:
+        return execution
+    else:
+        return ''
+
+def convert_sam_to_bam(parsed_filename, verbose=False, debug=False,
+                       extra_samtools_options=[], **kwargs):
 
     stdout_buffer = ''
 
     if debug: print_debug('Converting', parsed_filename.input_file, 
                           'to temporary BAM file', parsed_filename.temp_file)
     # this methods raises an error, we need to catch it
-    try:
-        converting = pysam.view('-b', '-S', '-o' + parsed_filename.temp_file, 
-                   parsed_filename.input_file)
-    except pysam.SamtoolsError, converting_error:
-        converting = str(converting_error)
-        if not converting.startswith("'[samopen]"):
-            raise converting_error
-    if type(converting) is list: list = os.linesep.join(list)
-    elif converting is None: converting = ''
+    converting = pysam_wrapper(extra_samtools_options + 
+                               ['-b', '-S', '-o' + parsed_filename.temp_file, 
+                               parsed_filename.input_file],
+                               pysam_func=pysam.view,
+                               expected_error='[samopen]')
     if debug: print_debug(converting)
 
     if debug: print_debug('Sorting BAM file...')
-    try:
-        sorting = pysam.sort(parsed_filename.temp_file,
-                             os.path.splitext(parsed_filename.output_file)[0])
-    except pysam.SamtoolsError, sorting_error:
-        if not sorting_error.startswith('[bam_sort_core] merging'):
-            raise sorting_error
-    if type(sorting) is list: sorting = os.linesep.join(sorting)
-    elif sorting is None: sorting = ''
+    sorting = pysam_wrapper((parsed_filename.temp_file,
+                            os.path.splitext(parsed_filename.output_file)[0]),
+                            pysam_func=pysam.sort,
+                            expected_error='[')
     if debug: print_debug(sorting)
 
     if debug: print_debug('Indexing sorted BAM file...')
-    try:
-        indexing = pysam.index(parsed_filename.output_file)
-    except pysam.SamtoolsError, indexing_error:
-        # right now this is just a placeholder
-        if not indexing_error.startswith(''):
-            raise indexing_error
-    if type(indexing) is list: indexing = os.linesep.join(indexing)
-    elif indexing is None: indexing = ''
-    if debug: print_debug(sorting)
-
-    if debug: print_debug('Indexing sorted BAM file...')
-    try:
-        indexing = pysam.index(parsed_filename.output_file)
-    except pysam.SamtoolsError, indexing_error:
-        # right now this is just a placeholder
-        if not indexing_error.startswith(''):
-            raise indexing_error
-    if type(indexing) is lis
+    indexing = pysam_wrapper((parsed_filename.output_file,),
+                             pysam_func=pysam.index)
     if debug: print_debug(indexing)
 
     if debug: print_debug('Removing temporary file', parsed_filename.temp_file)
@@ -84,4 +104,5 @@ def convert_sam_to_bam(parsed_filename, verbose=False, debug=False, **kwargs):
     return stdout_buffer
 
 if __name__=="__main__":
-	scripter.perform(convert_sam_to_bam, FilenameParser)
+    scripter.check_script_options = check_script_options
+    scripter.perform(convert_sam_to_bam, FilenameParser)

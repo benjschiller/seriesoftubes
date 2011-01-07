@@ -22,10 +22,11 @@ def main():
 		sys.stderr.write("CRITICAL: Python version must greater than or equal to 2.5! python 2.6.4 is recommended!\n")
 		sys.exit(1)
 	setup(name='seriesoftubes',
-          version = "2.2.1",
+          version = "2.2.3",
 	      description='An extended pipeline for Solexa ChIP-seq data',
 	      author='Benjamin Schiller',
 	      author_email='benjamin.schiller@ucsf.edu',
+          install_requires = ['scripter>=1.16a','biopython>=1.56'],
 	      packages = [],
 	      package_dir = {},
           scripts = [os.path.join('scripts', x) for x in os.listdir('scripts') 

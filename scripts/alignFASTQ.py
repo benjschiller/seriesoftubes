@@ -1,6 +1,18 @@
 #!/usr/bin/env python
 '''
 --references=ref1,ref2  use reference genomes ref1, ref2
+--mismatches=n          allow n mismatches (if use_quality, allow n mismatches
+                                            in the seed)
+                                           (default: 2)
+--use-quality           use quality scores (equivalent to -n mode)
+                        (default is to use -n mode)
+--quals-type=           integer, solexa1.3, solexa, phred33,
+                          or phred64 (see bowtie)
+                        (default is --quals-type=solexa1.3)
+--max-quality=          specify maximum quality scores of all mismatched
+                        positions (default: 70)
+
+--long-reads            equivalent to --use-quality
 
 # specify uniqueness of alignments
 default is --unique (-m 1) and --random (-M 1)
@@ -15,16 +27,18 @@ import scripter
 from scripter import assert_path, print_debug
 scripter.SCRIPT_DOC = __doc__
 scripter.SCRIPT_VERSION = "2.2"
-BOOLEAN_OPTS = ["long-reads"]
-scripter.SCRIPT_LONG_OPTS = ["no-random", "no-unique",
-                             "references="] + BOOLEAN_OPTS
+BOOLEAN_OPTS = ["long-reads", "use-quality"]
+scripter.SCRIPT_LONG_OPTS = ["no-random", "no-unique", "mismatches=",
+                             "quals-type=",
+                             "references=", "max-quality="] + BOOLEAN_OPTS
 scripter.SOURCE_DIR = 'sequences.FASTQ'
 scripter.TARGET_DIR = 'alignments.SAM'
 
-PATH_TO_BOWTIE = '/usr/local/bowtie-0.12.5/bowtie'
+PATH_TO_BOWTIE = scripter.path_to_executable('bowtie',
+                                             '/usr/local/bowtie-*')
 NUM_CPUS = 1 # we'll change 
 COMMON_FLAGS = ['-y', '-a', '--time', '--best', '--chunkmbs', '1024',
-                    '--strata', '--sam', '--phred64-quals']
+                    '--strata', '--sam']
 
 def check_script_options(options):
     specific_options = {}
@@ -40,10 +54,30 @@ def check_script_options(options):
         pyoption = "_".join(option.split("-"))
         specific_options[pyoption] = options.has_key(option)
 
+    if options.has_key('mismatches'):
+        specific_options['mismatches'] = options['mismatches']
+    else:
+        specific_options['mismatches'] = '2'
+
+    if options.has_key('quals-type'):
+        if options['quals-type'] in ['solexa', 'solexa1.3', 'phred64', 
+                                       'phred33','integer']:
+            specific_options['quals_type'] = options['quals-type']
+        else: raise scripter.Usage('invalid quals-type')
+    else:
+        specific_options['quals_type'] = 'solexa1.3' # same as bowtie
+
+    if options.has_key('max-quality'):
+        specific_options['max_quality'] = options['max-quality']
+    else:
+        specific_options['max_quality'] = '70' # same as bowtie
+
     return specific_options
 
 def action(filename, references=[], random=True, unique=True,
-           long_reads = False, **kwargs):
+           long_reads = False, use_quality=False, max_quality='70',
+           mismatches='2',  quals_type='solexa1.3', verbose=False,
+           **kwargs):
     if unique and random:
         uniqueness= {'unique': ['-m','1'], 'random': ['-M','1']}
     elif unique: uniqueness= {'unique': ['-m','1']}
@@ -56,11 +90,13 @@ def action(filename, references=[], random=True, unique=True,
         # In case we're from that bad day...
         source = filename.fastq_source
         if source=='081124_HWI-EAS355_0001_Meghan' and match_type=='unique':
-            flags.extend(['-v','3'])
-        elif long_reads:
-            flags.extend(['-n','2'])
+            flags.extend(['-v', '3'])
+        elif use_quality or long_reads:
+            flags.extend(['-e', max_quality])
+            flags.extend(['-n', mismatches])
+            flags.append(''.join(['--', quals_type, '-quals']))
         else:
-            flags.extend(['-v','2'])
+            flags.extend(['-v', mismatches])
 
         if filename.paired_end: flags.extend(['-X','600'])
 
@@ -82,9 +118,10 @@ def action(filename, references=[], random=True, unique=True,
             sys.stdout.write(' '.join(bowtie_args))
             sys.stdout.write(os.linesep)
             sys.stdout.flush()
-            bowtie_job = subprocess.Popen(bowtie_args, stdout=sys.stdout,
-                                            stderr=sys.stdout)
-            bowtie_job.wait()
+            bowtie_job = subprocess.call(bowtie_args,
+                                         stdout=sys.stdout,
+                                         stderr=subprocess.STDOUT)
+            if verbose: print_debug("Finished")
     return
 
 def get_pair_info(illumina_name):
