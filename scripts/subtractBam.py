@@ -47,7 +47,7 @@ returns a list of read names that are mapped from a BAM file
 
 looks at parsed_filename.
 '''
-    removeable_reads = []
+    removable_reads = []
 
     if sam_in: open_opts = 'r'
     else: open_opts = 'rb'
@@ -58,7 +58,7 @@ looks at parsed_filename.
 
     for read in bam_file:
         if is_mapped(read):
-            removeable_reads.append(read.qname)
+            removable_reads.append(read.qname)
 
     return removable_reads
 
