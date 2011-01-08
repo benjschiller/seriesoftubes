@@ -101,8 +101,7 @@ class SubtractBamFilenameParser(scripter.FilenameParser):
         input_dir_parts = self.input_dir.split(os.sep)
         glob_path = ['mapped', input_dir_parts[0],'*'] + input_dir_parts[2:] + [
                           os.path.basename(self.input_file)]
-        potential_filenames = glob.glob(os.path.join(
-                                            ))
+        potential_filenames = glob.glob(os.path.join(glob_path))
 
         if len(potential_filenames) is 1:
             self.mapped_file = potential_filenames[0]
