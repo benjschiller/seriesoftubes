@@ -17,8 +17,7 @@ def calculate_duplicates(parsed_filename, debug=False, **kwargs):
     note: you must be looking at a sorted file, or this won't work
     and you should not use random alignments, because this will not be accurate
     '''
-    try: bam_file = pysam.Samfile(parsed_filename.input_file, 'rb')
-    except: return
+    bam_file = pysam.Samfile(parsed_filename.mapped_filename, open_opts)
 
     current_frag = ('', 0, '', 0)
     d = collections.defaultdict(lambda: 0)
