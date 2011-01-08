@@ -119,4 +119,4 @@ class SubtractBamFilenameParser(scripter.FilenameParser):
 
 if __name__=="__main__":
     scripter.check_script_options = check_script_options
-	scripter.perform(calculate_duplicates, SubtractBamFilenameParser)
+    scripter.perform(calculate_duplicates, SubtractBamFilenameParser)
