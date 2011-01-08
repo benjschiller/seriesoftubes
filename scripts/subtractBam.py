@@ -29,6 +29,7 @@ scripter.SOURCE_DIR = 'alignments.BAM'
 scripter.TARGET_DIR = 'alignments_filtered.BAM'
 BOOLEAN_OPTS = ["sam-in", "sam-out", "remove-all"]
 scripter.SCRIPT_LONG_OPTS = BOOLEAN_OPTS
+scripter.ALLOWED_EXTENSIONS = ['sam', 'bam]
 
 def check_script_options(options):
     specific_options = {}
