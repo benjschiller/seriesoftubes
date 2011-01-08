@@ -49,8 +49,8 @@ looks at parsed_filename.
 '''
     removeable_reads = []
 
-    if sam_in: open_opts = 'rb'
-    else: open_opts = 'r'
+    if sam_in: open_opts = 'r'
+    else: open_opts = 'rb'
     bam_file = pysam.Samfile(parsed_filename.mapped_file, open_opts)
 
     if remove_all:
@@ -79,12 +79,12 @@ def remove_reads(parsed_filename, reads_to_remove, sam_in=False, sam_out=False,
     '''
 note: you must be looking at a sorted file, or this won't work
 '''
-    if sam_in: open_opts = 'rb'
-    else: open_opts = 'r'
+    if sam_in: open_opts = 'r'
+    else: open_opts = 'rb'
     bam_file = pysam.Samfile(parsed_filename.mapped_file, open_opts)
 
-    if sam_out: write_opts = 'wb'
-    else: write_opts = 'w'
+    if sam_out: write_opts = 'w'
+    else: write_opts = 'wb'
     out_bam_file = pysam.Samfile(parsed_filename.output_file, write_opts,
                                  template = bam_file)
     for read in bam_file:
