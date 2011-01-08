@@ -50,7 +50,7 @@ looks at parsed_filename.
 
     if sam_in: open_opts = 'rb'
     else: open_opts = 'r'
-    bam_file = pysam.Samfile(parsed_filename.mapped_filename, open_opts)
+    bam_file = pysam.Samfile(parsed_filename.mapped_file, open_opts)
 
     if remove_all:
         return [read.qname for read in bam_file]
