@@ -95,7 +95,7 @@ note: you must be looking at a sorted file, or this won't work
 
 class SubtractBamFilenameParser(scripter.FilenameParser):
     def __init__(self, filename, verbose=False, sam_out=False, *args, **kwargs):
-        super(BowtieFilenameParser, self).__init__(filename, *args, **kwargs)
+        super(SubtractBamFilenameParser, self).__init__(filename, *args, **kwargs)
 
         # check for the mapped_file
         potential_filenames = glob.glob(os.path.join(
