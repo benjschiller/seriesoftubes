@@ -41,7 +41,7 @@ def check_script_options(options):
 
 def get_removable_reads(parsed_filename, sam_in=False, remove_all=False,
                         **kwargs):
-'''
+    '''
 returns a list of read names that are mapped from a BAM file
 
 looks at parsed_filename.
@@ -62,7 +62,7 @@ looks at parsed_filename.
     return removable_reads
 
 def is_mapped(read):
-'''
+    '''
 true if a pysam.AlignedRead is mapped
 also checks if read is paired end; if so, returns if the pair is mapped
 '''
@@ -75,7 +75,7 @@ also checks if read is paired end; if so, returns if the pair is mapped
 
 def remove_reads(parsed_filename, reads_to_remove, sam_in=False, sam_out=False,
                  debug=False, **kwargs):
-'''
+    '''
 note: you must be looking at a sorted file, or this won't work
 '''
     if sam_in: open_opts = 'rb'
