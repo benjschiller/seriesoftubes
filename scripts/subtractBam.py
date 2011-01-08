@@ -117,6 +117,10 @@ class SubtractBamFilenameParser(scripter.FilenameParser):
         else:
             self.output_file = self.output_dir + self.with_extension('bam')
 
+def action(parsed_filename, **kwargs):
+    removable_reads = get_removable_reads(parsed_filename, **kwargs)
+    return remove_reads(parsed_filename, removable_reads, **kwargs)
+
 if __name__=="__main__":
     scripter.check_script_options = check_script_options
-    scripter.perform(calculate_duplicates, SubtractBamFilenameParser)
+    scripter.perform(action, SubtractBamFilenameParser)
