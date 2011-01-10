@@ -122,9 +122,11 @@ class SubtractBamFilenameParser(scripter.FilenameParser):
                 print_debug('Mapped file will be', self.mapped_file)
 
             if sam_out:
-                self.output_file = self.output_dir + self.with_extension('sam')
+                self.output_file = os.sepjoin([self.output_dir,
+                                               self.with_extension('sam')])
             else:
-                self.output_file = self.output_dir + self.with_extension('bam')
+                self.output_file = os.sepjoin([self.output_dir,
+                                               self.with_extension('bam')])
 
             if debug:
                 print_debug('Output file will be', self.output_file)
