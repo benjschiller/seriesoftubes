@@ -98,7 +98,11 @@ note: you must be looking at a sorted file, or this won't work
 class SubtractBamFilenameParser(scripter.FilenameParser):
     def __init__(self, filename, verbose=False, sam_out=False,
                 debug=False, *args, **kwargs):
-        super(SubtractBamFilenameParser, self).__init__(filename, *args,
+        super(SubtractBamFilenameParser, self).__init__(filename,
+                                                        verbose=verbose,
+                                                        debug=debug,
+                                                        sam_out=sam_out,
+                                                        *args,
                                                         **kwargs)
         if not self.is_dummy_file:
             # check for the mapped_file
