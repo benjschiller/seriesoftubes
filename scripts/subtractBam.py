@@ -22,6 +22,7 @@ import os
 import subprocess
 import collections
 import scripter
+from scripter import print_debug
 import pysam
 scripter.SCRIPT_DOC = __doc__
 scripter.SCRIPT_VERSION = "2.2"
@@ -95,14 +96,16 @@ note: you must be looking at a sorted file, or this won't work
     else: return ''
 
 class SubtractBamFilenameParser(scripter.FilenameParser):
-    def __init__(self, filename, verbose=False, sam_out=False, *args, **kwargs):
-        super(SubtractBamFilenameParser, self).__init__(filename, *args, **kwargs)
+    def __init__(self, filename, verbose=False, sam_out=False,
+                debug=False, *args, **kwargs):
+        super(SubtractBamFilenameParser, self).__init__(filename, *args,
+                                                        **kwargs)
         if not self.is_dummy_file:
             # check for the mapped_file
             input_dir_parts = self.input_dir.split(os.sep)
             glob_path = ['mapped', input_dir_parts[0], '*'] + \
-                        input_dir_parts[2:] + [
-                              os.path.basename(self.input_file)]
+                        input_dir_parts[2:] + \
+                        [os.path.basename(self.input_file)]
             potential_filenames = glob.glob(os.sep.join(glob_path))
 
             if len(potential_filenames) is 1:
@@ -111,11 +114,16 @@ class SubtractBamFilenameParser(scripter.FilenameParser):
                 raise scripter.Usage('Could not find mapped file')
             else:
                 raise scripter.Usage('Ambiguous mapped file', *potential_filenames)
+            if debug:
+                print_debug('Mapped file will be', self.mapped_file)
 
             if sam_out:
                 self.output_file = self.output_dir + self.with_extension('sam')
             else:
                 self.output_file = self.output_dir + self.with_extension('bam')
+
+            if debug:
+                print_debug('Output file will be', self.output_file)
 
 def action(parsed_filename, **kwargs):
     removable_reads = get_removable_reads(parsed_filename, **kwargs)
