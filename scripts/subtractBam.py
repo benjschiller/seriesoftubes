@@ -97,7 +97,6 @@ note: you must be looking at a sorted file, or this won't work
         if read.qname in reads_to_remove:
             continue
         else:
-            print read.qname
             out_bam_file.write(read)
 
     if debug: return stdout_buffer
