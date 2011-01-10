@@ -42,6 +42,7 @@ def check_script_options(options):
     return specific_options
 
 def get_removable_reads(parsed_filename, sam_in=False, remove_all=False,
+                        debug=False,
                         **kwargs):
     '''
 returns a list of read names that are mapped from a BAM file
@@ -60,6 +61,9 @@ looks at parsed_filename.
     for read in bam_file:
         if is_mapped(read):
             removable_reads.append(read.qname)
+
+    if debug: print_debug('Found', str(len(removable_reads)), 'reads in',
+                          parsed_filename.mapped_file)
 
     return removable_reads
 
@@ -80,17 +84,21 @@ def remove_reads(parsed_filename, reads_to_remove, sam_in=False, sam_out=False,
     '''
 note: you must be looking at a sorted file, or this won't work
 '''
+
     if sam_in: open_opts = 'r'
     else: open_opts = 'rb'
-    bam_file = pysam.Samfile(parsed_filename.mapped_file, open_opts)
+    bam_file = pysam.Samfile(parsed_filename.input_file, open_opts)
 
     if sam_out: write_opts = 'w'
     else: write_opts = 'wb'
     out_bam_file = pysam.Samfile(parsed_filename.output_file, write_opts,
                                  template = bam_file)
     for read in bam_file:
-        if read.qname in reads_to_remove: continue
-        else: out_bam_file.write(read)
+        if read.qname in reads_to_remove:
+            continue
+        else:
+            print read.qname
+            out_bam_file.write(read)
 
     if debug: return stdout_buffer
     else: return ''
