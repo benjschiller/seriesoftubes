@@ -59,15 +59,14 @@ looks at parsed_filename.
         return [read.qname for read in bam_file]
 
     for read in bam_file:
-        if is_mapped(read):
-            removable_reads.append(read.qname)
+        if is_mapped(read): removable_reads.append(read.qname)
 
     if debug: print_debug('Found', str(len(removable_reads)), 'reads in',
                           parsed_filename.mapped_file)
 
     bam_file.close()
 
-    return removable_reads
+    return set(removable_reads)
 
 def is_mapped(read):
     '''
@@ -87,19 +86,19 @@ def remove_reads(parsed_filename, reads_to_remove, sam_in=False, sam_out=False,
 note: you must be looking at a sorted file, or this won't work
 '''
 
-    if sam_in: open_opts = 'r'
-    else: open_opts = 'rb'
-    bam_file = pysam.Samfile(parsed_filename.input_file, open_opts)
+    if sam_in:
+        open_opts = 'r'
+        write_opts = 'w'
+    else:
+        open_opts = 'rb'
+        write_opts = 'wb'
 
-    if sam_out: write_opts = 'w'
-    else: write_opts = 'wb'
+    bam_file = pysam.Samfile(parsed_filename.input_file, open_opts)
     out_bam_file = pysam.Samfile(parsed_filename.output_file, write_opts,
                                  template = bam_file)
     for read in bam_file:
-        if read.qname in reads_to_remove:
-            continue
-        else:
-            out_bam_file.write(read)
+        if read.qname in reads_to_remove: continue
+        else: out_bam_file.write(read)
 
     bam_file.close()
     out_bam_file.close()
