@@ -65,6 +65,8 @@ looks at parsed_filename.
     if debug: print_debug('Found', str(len(removable_reads)), 'reads in',
                           parsed_filename.mapped_file)
 
+    bam_file.close()
+
     return removable_reads
 
 def is_mapped(read):
@@ -99,8 +101,10 @@ note: you must be looking at a sorted file, or this won't work
         else:
             out_bam_file.write(read)
 
-    if debug: return stdout_buffer
-    else: return ''
+    bam_file.close()
+    out_bam_file.close()
+
+    return ''
 
 class SubtractBamFilenameParser(scripter.FilenameParser):
     def __init__(self, filename, verbose=False, sam_out=False,
