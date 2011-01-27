@@ -82,6 +82,7 @@ def check_script_options(options):
 def action(filename, references=[], random=True, unique=True,
            long_reads=False, use_quality=False, max_quality='70',
            mismatches='2',  quals_type='solexa1.3', verbose=False,
+           common_flags = [],
            **kwargs):
     if unique and random:
         uniqueness= {'unique': ['-m','1'], 'random': ['-M','1']}
@@ -89,7 +90,7 @@ def action(filename, references=[], random=True, unique=True,
     elif random: uniqueness= {'random': ['-M','1']}
 
     for match_type, match_flag in uniqueness.items():
-        flags = [item for item in COMMON_FLAGS]
+        flags = [item for item in common_flags]
         flags.extend(match_flag)
 
         # In case we're from that bad day...
