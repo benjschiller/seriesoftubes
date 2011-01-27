@@ -111,13 +111,13 @@ def action(filename, references=[], random=True, unique=True,
             filename.check_output_dir(os.path.split(path_to_output)[0])
 
             if filename.paired_end:
-                bowtie_args = [PATH_TO_BOWTIE] + flags + [ref, '-1',
+                bowtie_args = [path_to_bowtie] + flags + [ref, '-1',
                                                           filename.input_file,
                                                           '-2',
                                                           filename.second_file,
                                                           path_to_output]
             else:
-                bowtie_args = [PATH_TO_BOWTIE] + flags + [ref, 
+                bowtie_args = [path_to_bowtie] + flags + [ref, 
                                                           filename.input_file, 
                                                           path_to_output]
             sys.stdout.write(os.linesep)
