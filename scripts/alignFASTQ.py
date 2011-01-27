@@ -82,7 +82,7 @@ def check_script_options(options):
 def action(filename, references=[], random=True, unique=True,
            long_reads=False, use_quality=False, max_quality='70',
            mismatches='2',  quals_type='solexa1.3', verbose=False,
-           common_flags = [],
+           common_flags = [], path_to_bowtie= 'bowtie',
            **kwargs):
     if unique and random:
         uniqueness= {'unique': ['-m','1'], 'random': ['-M','1']}
