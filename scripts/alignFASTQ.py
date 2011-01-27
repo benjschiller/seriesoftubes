@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-'''
+"""
 --references=ref1,ref2  use reference genomes ref1, ref2
 --mismatches=n          allow n mismatches (if use_quality, allow n mismatches
                                             in the seed)
@@ -18,27 +18,36 @@
 default is --unique (-m 1) and --random (-M 1)
 --no-unique             equivalent to -m 1
 --no-random             equivalent to -M 1
-'''
+"""
 import sys
 import os
 import multiprocessing
 import subprocess
 import scripter
-from scripter import assert_path, print_debug
-scripter.SCRIPT_DOC = __doc__
-scripter.SCRIPT_VERSION = "2.2"
-BOOLEAN_OPTS = ["long-reads", "use-quality"]
-scripter.SCRIPT_LONG_OPTS = ["no-random", "no-unique", "mismatches=",
-                             "quals-type=",
-                             "references=", "max-quality="] + BOOLEAN_OPTS
-scripter.SOURCE_DIR = 'sequences.FASTQ'
-scripter.TARGET_DIR = 'alignments.SAM'
+from scripter import assert_path, print_debug, path_to_executable
 
-PATH_TO_BOWTIE = scripter.path_to_executable('bowtie',
-                                             '/usr/local/bowtie-*')
-NUM_CPUS = 1 # we'll change 
-COMMON_FLAGS = ['-y', '-a', '--time', '--best', '--chunkmbs', '1024',
-                    '--strata', '--sam']
+SOURCE_DIR = 'sequences.FASTQ'
+TARGET_DIR = 'alignments.SAM'
+VERSION = "2.4"
+
+def main():
+    boolean_opts = ["long-reads", "use-quality"]
+    long_opts = ["no-random", "no-unique", "mismatches=",
+                 "quals-type=", "references=", "max-quality="] + boolean_opts
+    e = scripter.Environment(long_opts=long_opts, version=VERSION, doc=__doc__)
+    e.set_filename_parser(BowtieFilenameParser)
+    num_cpus = e.get_num_cpus()
+    e.set_num_cpus(1) # we'll let bowtie do the multiprocessing
+    common_flags = ['-y', '-a', '--time', '--best', '--chunkmbs', '1024',
+                    '--strata', '--sam', '-p', str(num_cpus)]
+    path_to_bowtie = path_to_executable('bowtie', '/usr/local/bowtie-*')
+    e.update_script_kwargs({'common_flags': common_flags,
+                        'path_to_bowtie': path_to_bowtie})
+    e.parse_boolean_opts(boolean_opts)
+    e.update_script_kwargs(check_script_options(e.get_options()))
+    e.source_dir = SOURCE_DIR
+    e.target_dir = TARGET_DIR
+    e.do_action(action)
 
 def check_script_options(options):
     specific_options = {}
@@ -49,10 +58,6 @@ def check_script_options(options):
 
     specific_options['unique'] = not options.has_key('no-unique')
     specific_options['random'] = not options.has_key('no-random')
-
-    for option in BOOLEAN_OPTS:
-        pyoption = "_".join(option.split("-"))
-        specific_options[pyoption] = options.has_key(option)
 
     if options.has_key('mismatches'):
         specific_options['mismatches'] = options['mismatches']
@@ -75,7 +80,7 @@ def check_script_options(options):
     return specific_options
 
 def action(filename, references=[], random=True, unique=True,
-           long_reads = False, use_quality=False, max_quality='70',
+           long_reads=False, use_quality=False, max_quality='70',
            mismatches='2',  quals_type='solexa1.3', verbose=False,
            **kwargs):
     if unique and random:
@@ -185,12 +190,4 @@ class BowtieFilenameParser(scripter.FilenameParser):
                                        self.with_extension('sam'))
         return path_to_output
 
-if __name__=="__main__":
-    NUM_CPUS = scripter.NUM_CPUS # get the number of cpus
-    scripter.NUM_CPUS = 1 # OVERRIDE NUM_CPUS
-    COMMON_FLAGS.extend(['-p', str(NUM_CPUS)]) # Apply to bowtie
-
-    scripter.check_script_options = check_script_options
-
-    FilenameParser = BowtieFilenameParser
-    scripter.perform(action, FilenameParser)
+if __name__=="__main__": main()
