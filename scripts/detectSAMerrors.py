@@ -1,25 +1,35 @@
 #!/usr/bin/env python
 '''
-Finds and sequences errors (Ns) at each base position in FASTQ files
+Finds and sequences errors (Ns) at each base position in SAM files
+
+DEPRECATED : will be replaced with detect_bam_errors.py
 
 Default options: --target=errors.SAM
 '''
+raise UserWarning('This script is broken right now')
 import os
 import collections
 from collections import defaultdict
-import scripter 
-scripter.SCRIPT_DOC = __doc__
-scripter.SCRIPT_VERSION = "2.1"
-scripter.SOURCE_DIR = 'alignments.SAM'
-scripter.TARGET_DIR = 'errors.SAM'
+import scripter
+try:
+    import pysam
+except ImportError:
+    detect_errors = detect_errors_nopysam
 
-def get_MD_value(line):
-    for field in line.split():
-        if field.startswith('MD'): return field.split(':')[-1]
-    return ''
+VERSION = "2.4"
 
-def parse_MD_value(line):
-    s = get_MD_value(line)
+def main():
+    e = scripter.Environment(version=VERSION, doc=__doc__)
+    e.set_source_dir = 'alignments.SAM'
+    e.set_target_dir = 'errors.SAM'
+    e.set_filename_parser(FilenameParser)
+    e.do_action(detect_errors)
+
+def parse_MD_value(aligned_read):
+    #windows hack
+    s = None
+    s = dict(aligned_read.tags())['MD']
+    if s is None: return None
     start = 0  
     end = 0
     mpos = 0
@@ -60,7 +70,43 @@ def detect_errors(parsed_filename, verbose=False, **kwargs):
                                  parsed_filename.input_file])
     else:
         stdout_buffer = ''
+    
+    pysam_file = pysam.Samfile(parsed_filename.input_file)
+    errors = defaultdict(lambda: 0)
+    first_good_line = True
+    max_seq_length = 0
+    i = 0
 
+    for line in pysam_file:
+        i += 1
+        seq_length = len(line.split()[9])
+        if seq_length > max_seq_length: max_seq_length = seq_length
+        mismatched_bases = parse_MD_value(line)
+        for base in mismatched_bases: errors[base] += 1
+
+    if verbose:
+        stdout_buffer = os.linesep.join([stdout_buffer,
+                                 ' '.join(['Found', str(i), 'sequences']),
+	                             ' '.join(['Writing error counts to',
+                                 parsed_filename.output_filename]), ''])
+    newfile = open(parsed_filename.output_filename,'w')
+    for pos in range(max_seq_length):
+        count = errors[pos]
+        newfile.write(''.join(['\t'.join([str(pos), str(count)]), os.linesep]))
+    newfile.close()
+
+    return stdout_buffer
+
+def detect_errors_nopysam(parsed_filename, verbose=False, **kwargs):
+    raise DeprecatedWarning('This function is deprecated. Install pysam' +
+                            'to use the newer version')
+    if verbose:
+        stdout_buffer = ''.join(['Determining basewise error rates in ',
+                                 parsed_filename.input_file])
+    else:
+        stdout_buffer = ''
+
+    
     f = open(parsed_filename.input_file)
     errors = defaultdict(lambda: 0)
     first_good_line = True
@@ -94,5 +140,4 @@ class FilenameParser(scripter.FilenameParser):
         self.output_filename = os.path.join(self.output_dir,
                          self.with_extension(os.extsep.join(['errors','txt'])))
 
-if __name__== "__main__":
-    scripter.perform(detect_errors, FilenameParser)
+if __name__== "__main__": main()

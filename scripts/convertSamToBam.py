@@ -13,11 +13,16 @@ import subprocess
 import scripter
 from scripter import print_debug
 import pysam
-scripter.SCRIPT_DOC = __doc__
-scripter.SCRIPT_VERSION = "2.3"
-scripter.SOURCE_DIR = 'alignments.SAM'
-scripter.TARGET_DIR = 'alignments.BAM'
-scripter.SCRIPT_LONG_OPTS = ["extra-samtools-options="]
+VERSION = "2.4"
+
+def main():
+    long_opts = ["extra-samtools-options="],
+    e = scripter.Environment(long_opts=long_opts, version=VERSION, doc=__doc__)
+    e.update_script_kwargs(check_script_options(e.get_options()))
+    e.set_source_dir('alignments.SAM')
+    e.set_target_dir('alignments.BAM')
+    e.set_filename_parser(FilenameParser)
+    e.do_action(convert_sam_to_bam)
 
 def check_script_options(options):
      specific_options = {}
@@ -103,6 +108,4 @@ def convert_sam_to_bam(parsed_filename, verbose=False, debug=False,
 
     return stdout_buffer
 
-if __name__=="__main__":
-    scripter.check_script_options = check_script_options
-    scripter.perform(convert_sam_to_bam, FilenameParser)
+if __name__=="__main__": main()

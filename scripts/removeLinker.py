@@ -63,7 +63,7 @@ def action(parsed_filename, linker='', verbose=False, **kwargs):
         linker_index = seq.find(linker)
         
         if linker_index == -1:
-            output_file.write("@%s\n%s+%s\n%s\n" % (title, seq, title, qual))
+            output_file.write("@%s\n%s\n+%s\n%s\n" % (title, seq, title, qual))
         
         if linker_index==0:
             linker_only += 1
@@ -72,7 +72,7 @@ def action(parsed_filename, linker='', verbose=False, **kwargs):
             too_short += 1
             continue
         else:
-            output_file.write("@%s\n%s+%s\n%s\n" % (title, seq[0:linker_index],
+            output_file.write("@%s\n%s\n+%s\n%s\n" % (title, seq[0:linker_index],
                                                   title, qual[0:linker_index]))
     # close and exit #
     f.close()

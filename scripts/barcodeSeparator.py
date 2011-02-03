@@ -3,26 +3,29 @@
 Separates FASTQ files by barcodes
 
 --barcodes=SEQ1,SEQ2    (default: TCAT, GACG, AGTC, CTGA)
---pool-rc               pool reverse complements
---no-pool-rc            do not pool reverse complements (default)
 --no-target,--same-dir  keep new files in the same directory as the input files
 --strip-after-barcode=n strip n bases after the barcode is removed (5' end)
                         (by default this 1 now, and is ignored if GERALD
                          handled the barcoding)
 '''
 import os
+import operator
 import scripter
-from scripter import print_debug, assert_path
-import Bio.SeqIO
-scripter.SCRIPT_DOC = __doc__
-scripter.SCRIPT_VERSION = "2.3"
-BOOLEAN_OPTS = ["pool-rc", "no-pool-rc", "no-target", "same-dir"]
-scripter.SCRIPT_LONG_OPTS = ["barcodes=",
-                             "strip-after-barcode="] + BOOLEAN_OPTS
-#scripter.SOURCE_DIR = None
-scripter.TARGET_DIR = os.curdir
-
+from scripter import print_debug, assert_path, InvalidFileException
+import Bio.SeqIO.QualityIO
+from Bio.SeqIO.QualityIO import FastqGeneralIterator
+VERSION = "2.4"
 DEFAULT_BARCODES = ['TCAT', 'GACG', 'AGTC', 'CTGA']
+
+def main():
+    boolean_opts = ["no-target", "same-dir"]
+    long_opts = ["barcodes=", "strip-after-barcode="] + boolean_opts
+    e = scripter.Environment(long_opts=long_opts, version=VERSION, doc=__doc__)
+    e.set_target_dir(os.curdir)
+    e.parse_boolean_opts(boolean_opts)
+    e.update_script_kwargs(check_script_options(e.get_options()))
+    e.set_filename_parser(BarcodeFilenameParser)
+    e.do_action(separate_barcodes)
 
 def check_script_options(options):
     sopts = {}
@@ -31,27 +34,19 @@ def check_script_options(options):
     else: # default to TCAT,GACG
         sopts['barcodes'] = DEFAULT_BARCODES
 
-    for option in BOOLEAN_OPTS:
-        pyoption = "_".join(option.split("-"))
-        sopts[pyoption] = options.has_key(option)
-
-    if options.has_key('pool-rc') and options.has_key('no-pool-rc'):
-        raise scripter.Usage('conflicting options: --pool-rc and',
-                             '--no-pool-rc')
-
-    if sopts['same_dir']: sopts['no_target'] = True
+    if options.has_key('same-dir') or options.has_key('no-target'):
+        sopts['no_target'] = True
 
     return sopts
 
-def action(parsed_filename, **kwargs):
+def separate_barcodes(parsed_filename, **kwargs):
     stdout_buffer = ''
     verbose = kwargs['verbose']
     debug = kwargs['debug']
     split_names = split_file(parsed_filename, **kwargs)
     if verbose:
-        stdout_buffer = ''.join([stdout_buffer, 'Split ',
-                                 parsed_filename.input_file,
-                                 'as ', ", ".join(fixed_names), os.linesep])
+        stdout_buffer += ' '.join(['Split', parsed_filename.input_file, 'as'
+                                   ", ".join(split_names), os.linesep])
     return stdout_buffer
 
 class IlluminaID:
@@ -75,32 +70,34 @@ class IlluminaID:
                              '/', self.member_of_pair])
         return ':'.join([self.instrument, self.title, self.x, last_part])
 
-def match_barcode(current_barcode, allowed_barcodes, mismatches=1,
-                  pool_rc=False):
+def match_barcode(current_barcode, allowed_barcodes, mismatches=1):
     accepted = []
     for barcode in allowed_barcodes:
-        if pool_rc: valid_barcodes = [barcode, _rc(barcode)]
-        else: valid_barcodes = [barcode]
-        for barcode_ in valid_barcodes:
-            barcode_length = len(barcode_)
-            score = 0
-            for i in range(barcode_length):
-                if barcode_[i] == current_barcode[i]: score += 1
-            if score >= (barcode_length - 1):
-                accepted.append(barcode_)
-                continue
-    if len(accepted) == 1: return accepted[0]
+        barcode_length = len(barcode)
+        m = 0
+        i = 0
+        while True:
+            i += 1
+            if m > mismatches: break
+            if i == barcode_length:
+                accepted.append(barcode)
+                break
+            if not barcode[i] == current_barcode[i]: m+=1
+#        score = sum(map(operator.eq, current_barcode, barcode))
+#        if not score + mismatches < barcode_length:
+#            accepted.append(barcode)
+        if len(accepted) == 1: return accepted[0]
     else: return ''
 
 # read write four lines at a time #
-def split_file(parsed_filename, pool_rc=False, barcodes=DEFAULT_BARCODES,
+def split_file(parsed_filename, barcodes=DEFAULT_BARCODES,
                strip_length = 1, **kwargs):
     f = open(parsed_filename.input_file, "rU")
-    record_generator = Bio.SeqIO.parse(f, "fastq-illumina")
+    record_generator = FastqGeneralIterator(f)
     if parsed_filename.paired_end:
         paired_end = True
         f2 = open(parsed_filename.second_file, "rU")
-        record_generator2 = Bio.SeqIO.parse(f2, "fastq-illumina")
+        record_generator2 = FastqGeneralIterator(f2)
     else: paired_end = False
 
     matched_barcode = ''
@@ -135,60 +132,56 @@ def split_file(parsed_filename, pool_rc=False, barcodes=DEFAULT_BARCODES,
         mismatched_filename2 = parsed_filename.output_filename2("mismatched")
         filenames2.append(mismatched_filename2)
         mismatched_file2 = open(mismatched_filename2, 'w')
-    for record in record_generator:
+    for title, seq, qual in record_generator:
         # check to see if barcode is in name, as with old-style GERALD
-        il_ID = IlluminaID(record.id)
+        il_ID = IlluminaID(title)
         barcode = il_ID.barcode
         if barcode=='0':
-            matched_barcode = match_barcode(str(record.seq), barcodes) 
-            if len(matched_barcode) is not 0:
-                record = record[len(matched_barcode) + strip_length:]
+            matched_barcode = match_barcode(seq, barcodes) 
+            if not len(matched_barcode) == 0:
+                seq = seq[len(matched_barcode) + strip_length:]
+                qual = qual[len(matched_barcode) + strip_length:]
                 il_ID.barcode = matched_barcode
-                record.id = str(il_ID)
-                record.name = str(il_ID)
-                record.description = str(il_ID)
-        else:
-            matched_barcode = match_barcode(barcode, barcodes)
+                title = str(il_ID)
+        else: matched_barcode = match_barcode(barcode, barcodes)
 
         # check if we have a matching paired read
         if paired_end:
-            record2 = record_generator2.next()
-            il_ID2 = IlluminaID(record2.id)
+            title2, seq2, qual2 = record_generator2.next()
+            il_ID2 = IlluminaID(title2)
             barcode2 = il_ID2.barcode
             if barcode2=='0':
-                matched_barcode2 = match_barcode(str(record2.seq), barcodes) 
-                if len(matched_barcode2) is not 0:
-                    record2 = record2[len(matched_barcode2) + strip_length:]
+                matched_barcode2 = match_barcode(seq2, barcodes) 
+                if not len(matched_barcode2) == 0:
+                    seq2 = seq2[len(matched_barcode) + strip_length:]
+                    qual2 = qual2[len(matched_barcode) + strip_length:]
                     il_ID2.barcode = matched_barcode2
-                    record2.id = str(il_ID2)
-                    record2.name = str(il_ID2)
-                    record2.description = str(il_ID2)
-            else:
-                matched_barcode2 = match_barcode(barcode2, barcodes)
+                    title2 = str(il_ID)
+            else: matched_barcode2 = match_barcode(barcode2, barcodes)
 
             if len(matched_barcode) is not 0 and \
               matched_barcode == matched_barcode2:
-                Bio.SeqIO.write(record,
-                                files[matched_barcode], "fastq-illumina")
-                Bio.SeqIO.write(record2,
-                                files2[matched_barcode2], "fastq-illumina")
-            elif len(matched_barcode) is 0 or len(matched_barcode2) is 0:
-                Bio.SeqIO.write(record,
-                                unmatched_file, "fastq-illumina")
-                Bio.SeqIO.write(record2,
-                                unmatched_file2, "fastq-illumina")
+                files[matched_barcode].write("@%s\n%s\n+%s\n%s\n" % 
+                                             (title, seq, title, qual))
+                files2[matched_barcode2].write("@%s\n%s\n+%s\n%s\n" % 
+                                             (title2, seq2, title2, qual2))
+            elif len(matched_barcode) == 0 or len(matched_barcode2) == 0:
+                unmatched_file.write("@%s\n%s\n+%s\n%s\n" % 
+                                             (title, seq, title, qual))
+                unmatched_file2.write("@%s\n%s\n+%s\n%s\n" % 
+                                             (title2, seq2, title2, qual2))
             else:
-                Bio.SeqIO.write(record,
-                                mismatched_file, "fastq-illumina")
-                Bio.SeqIO.write(record2,
-                                mismatched_file2, "fastq-illumina")
+                mismatched_file.write("@%s\n%s\n+%s\n%s\n" % 
+                                             (title, seq, title, qual))
+                mismatched_file2.write("@%s\n%s\n+%s\n%s\n" % 
+                                             (title2, seq2, title2, qual2))
         else:
             if len(matched_barcode) is not 0:
-                Bio.SeqIO.write(record,
-                                files[matched_barcode], "fastq-illumina")
+                files[matched_barcode].write("@%s\n%s\n+%s\n%s\n" % 
+                                             (title, seq, title, qual))
             else:
-                Bio.SeqIO.write(record,
-                                unmatched_file, "fastq-illumina")
+                unmatched_file.write("@%s\n%s\n+%s\n%s\n" % 
+                                             (title, seq, title, qual))
     # close and exit #
     f.close()
     for f_ in files.values(): f_.close()
@@ -238,7 +231,7 @@ class BarcodeFilenameParser(scripter.FilenameParser):
                     self.paired_end = False
             elif iln_parts[2] == '2':
                 if verbose: print_debug('This is the second file, ignoring it.')
-                self.is_invalid = True
+                raise InvalidFileException(self.input_file)
             else:
                 if verbose: print_debug('Failed to find paired end')
                 self.paired_end = False
@@ -255,8 +248,4 @@ class BarcodeFilenameParser(scripter.FilenameParser):
                                             '_'.join(['barcode', barcode]),
                                              self.file_extension]))
 
-if __name__== "__main__":
-    scripter.check_script_options = check_script_options
-    
-    FilenameParser = BarcodeFilenameParser
-    scripter.perform(action, FilenameParser)
+if __name__== "__main__": main()

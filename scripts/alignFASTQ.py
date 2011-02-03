@@ -21,7 +21,7 @@ default is --unique (-m 1) and --random (-M 1)
 """
 import sys
 import os
-import multiprocessing
+import platform
 import subprocess
 import scripter
 from scripter import assert_path, print_debug, path_to_executable
@@ -36,8 +36,13 @@ def main():
                  "quals-type=", "references=", "max-quality="] + boolean_opts
     e = scripter.Environment(long_opts=long_opts, version=VERSION, doc=__doc__)
     e.set_filename_parser(BowtieFilenameParser)
-    num_cpus = e.get_num_cpus()
-    e.set_num_cpus(1) # we'll let bowtie do the multiprocessing
+    if platform.system() == 'Windows':
+        # then let python do the multprocessing
+        num_cpus = 1
+    else:
+        # then let bowtie do the multiprocessing
+        num_cpus = e.get_num_cpus()
+        e.set_num_cpus(1) # we'll let bowtie do the multiprocessing
     common_flags = ['-y', '-a', '--time', '--best', '--chunkmbs', '1024',
                     '--strata', '--sam', '-p', str(num_cpus)]
     path_to_bowtie = path_to_executable('bowtie', '/usr/local/bowtie-*')

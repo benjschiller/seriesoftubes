@@ -7,17 +7,20 @@ import subprocess
 import collections
 import scripter
 import pysam
-scripter.SCRIPT_DOC = __doc__
-scripter.SCRIPT_VERSION = "2.2"
-scripter.SOURCE_DIR = 'alignments.BAM'
-scripter.TARGET_DIR = 'duplicate.rates'
+VERSION = "2.4"
+
+def main():
+    e = scripter.Environment(version=VERSION, doc=__doc__)
+    e.set_source_dir('alignments.BAM')
+    e.set_target_dir('duplicates.rates')
+    e.do_action(calculate_duplicates)
 
 def calculate_duplicates(parsed_filename, debug=False, **kwargs):
     '''
     note: you must be looking at a sorted file, or this won't work
     and you should not use random alignments, because this will not be accurate
     '''
-    bam_file = pysam.Samfile(parsed_filename.mapped_filename, open_opts)
+    bam_file = pysam.Samfile(parsed_filename.input_file, 'rb')
 
     current_frag = ('', 0, '', 0)
     d = collections.defaultdict(lambda: 0)
@@ -78,5 +81,4 @@ def calculate_duplicates(parsed_filename, debug=False, **kwargs):
     if debug: return stdout_buffer
     else: return ''
 
-if __name__=="__main__":
-	scripter.perform(calculate_duplicates)
+if __name__=="__main__": main()
