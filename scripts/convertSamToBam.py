@@ -3,8 +3,8 @@
 Converts SAM to BAM files
 and also builds an index for the BAM files
 
---no-unmapped   do not produce BAM files with only unmapped reads
---no-mapped     do not produce BAM files with only mapped reads
+--no-unfiltered   do not produce BAM files with only unmapped reads
+--no-filtered     do not produce BAM files with only mapped reads
 
 Default options: --source=alignments.SAM --target=alignments.BAM
 '''
@@ -16,23 +16,33 @@ import pysam
 VERSION = "2.4"
 
 def main():
-    long_opts = ["extra-samtools-options="],
+    long_opts = ["extra-samtools-options="]
     e = scripter.Environment(long_opts=long_opts, version=VERSION, doc=__doc__)
-    e.update_script_kwargs(check_script_options(e.get_options()))
+    filtered, unfiltered = check_script_options(e.get_options())
     e.set_source_dir('alignments.SAM')
     e.set_target_dir('alignments.BAM')
     e.set_filename_parser(FilenameParser)
-    e.do_action(convert_sam_to_bam)
+    if unfiltered:
+        e.do_action(convert_sam_to_bam)
+    if filtered:
+        e.update_script_kwargs({'extra-samtools-options': ['-F', '0x4']})
+        e.set_target_dir('alignments_filtered.BAM')
+        e.do_action(convert_sam_to_bam)
 
 def check_script_options(options):
-     specific_options = {}
-     if options.has_key('extra-samtools-options'):
-         specific_options['extra_samtools_options'
-                          ] = options['extra-samtools-options'].strip().split()
-     else:
-         specific_options['extra_samtools_options'] = []
-
-     return specific_options
+#     specific_options = {}
+#     if options.has_key('extra-samtools-options'):
+#         specific_options['extra_samtools_options'
+#                          ] = options['extra-samtools-options'].strip().split()
+#     else:
+#         specific_options['extra_samtools_options'] = []
+#
+#     return specific_options
+    filtered = True
+    unfiltered = True
+    if options.has_key("no-filtered"): filtered = False
+    if options.has_key("no-unfiltered"): unfiltered = False
+    return filtered, unfiltered
 
 class FilenameParser(scripter.FilenameParser):
     def __init__(self, filename, *args, **kwargs):

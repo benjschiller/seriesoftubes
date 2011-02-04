@@ -26,7 +26,7 @@ def main():
 	      description='An extended pipeline for Solexa ChIP-seq data',
 	      author='Benjamin Schiller',
 	      author_email='benjamin.schiller@ucsf.edu',
-          install_requires = ['scripter>=2.0', 'biopython>=1.56', 'pysam=>0.3.1'],
+          install_requires = ['scripter>=2.0-rc2', 'biopython>=1.56', 'pysam>=0.3.1'],
 	      packages = [],
 	      package_dir = {},
           scripts = [os.path.join('scripts', x) for x in os.listdir('scripts') 
