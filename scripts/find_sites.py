@@ -23,8 +23,11 @@ import Bio.Motif
 import bioplus
 import bioplus.sitefinder
 from bioplus.sitefinder import find_sites
-try: import MOODS
-except ImportError: print_debug("WARNING: MOODS is not installed")
+try:
+    import MOODS
+except ImportError:
+    print_debug('WARNING: MOODS is not installed. You may obtain it from '
+                'http://www.cs.helsinki.fi/group/pssmfind/')
 
 SCRIPT_VERSION = "2.4"
 
