@@ -1,4 +1,14 @@
 #!/usr/bin/env python
+#Copyright (c) 2010 Benjamin Schiller
+#
+#This file is part of seriesoftubes.
+#
+#seriesoftubes is free software; you can redistribute it and/or modify it under
+#the terms of the Artistic Free License 2.0. All rights not covered by the 
+#Artistic Free License 2.0 are reserved. The Artistic Free License 2.0 will take
+#precedence in the event of a conflict with this copyright notice.
+#
+# See <http://www.opensource.org/licenses/artistic-license-2.0.php> for more information.
 '''
 Converts SAM to BAM files
 and also builds an index for the BAM files
@@ -16,7 +26,7 @@ import pysam
 VERSION = "2.4"
 
 def main():
-    long_opts = ["extra-samtools-options="]
+    long_opts = ["no-filtered", "no-unfiltered"]
     e = scripter.Environment(long_opts=long_opts, version=VERSION, doc=__doc__)
     filtered, unfiltered = check_script_options(e.get_options())
     e.set_source_dir('alignments.SAM')

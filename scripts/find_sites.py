@@ -17,23 +17,29 @@ Optional flags:
 """
 import os
 import scripter
-from scripter import Usage, print_debug, extend_buffer
+from scripter import Usage, print_debug, extend_buffer, InvalidFileException
 import Bio
 import Bio.Motif
 import bioplus
 import bioplus.sitefinder
 from bioplus.sitefinder import find_sites
+try: import MOODS
+except ImportError: print_debug("WARNING: MOODS is not installed")
 
-scripter.SCRIPT_DOC = __doc__
-scripter.SCRIPT_VERSION = "2.2"
-scripter.SOURCE_DIR = 'peaks.FASTA'
-scripter.TARGET_DIR = 'sites.analysis'
-scripter.ALLOWED_EXTENSIONS = ['bed', 'xls']
+SCRIPT_VERSION = "2.4"
 
-BOOLEAN_OPTS = ["bed", "xls"]
-scripter.SCRIPT_LONG_OPTS = ["motif=", "motif-type=", "motif-number="
-                             ] + BOOLEAN_OPTS
-
+def main():
+    boolean_opts = ["bed", "xls"]
+    long_opts = ["motif=", "motif-type=", "motif-number="] + boolean_opts
+    e = scripter.Environment(long_opts=long_opts, doc=__doc__, version=VERSION)
+    e.parse_boolean_opts(boolean_opts)
+    all_opts = check_script_options(e.get_options(), debug=e.is_debug())
+    e.update_script_kwargs(all_opts)
+    e.set_source_dir('peaks.FASTA')
+    e.set_target_dir('sites.analysis')
+    e.set_filename_parser(FilenameParser)
+    e.do_action(action)
+    
 def check_script_options(options, debug=False):
     sopts = {}
   
@@ -66,10 +72,6 @@ def check_script_options(options, debug=False):
                 raise Usage(motif_file, "does not contain a valid motif")
         sopts['motif'] = motif
    
-    for option in BOOLEAN_OPTS:
-        pyoption = "_".join(option.split("-"))
-        sopts[pyoption] = options.has_key(option)
-
     if sopts['bed'] and sopts['xls']:
         raise Usage("can only specify one of --bed, --xls")
     elif not sopts['bed'] and not sopts['xls']:
@@ -92,6 +94,8 @@ def action(parsed_filename, motif, bed=True, xls=False,
 class FilenameParser(scripter.FilenameParser):
     def __init__(self, filename, include_width_in_name=False,
                  debug=False, *args, **kwargs):
+        fext = os.path.splitext(filename)[0].lstrip(os.extsep)
+        if not (fext == 'bed' or fext == 'xls'): raise InvalidFileException
         super(FilenameParser, self).__init__(filename, debug=debug,
                                              *args, **kwargs)
         if self.is_dummy_file: return
@@ -108,8 +112,4 @@ class FilenameParser(scripter.FilenameParser):
             raise Usage("Could not find the FASTA file for ", self.input_file)
             # or in the future, fetch the sequence?
 
-if __name__=="__main__":
-    try: import MOODS
-    except ImportError: print_debug("WARNING: MOODS is not installed")
-    scripter.check_script_options = check_script_options
-    scripter.perform(action, FilenameParser)
+if __name__=="__main__": main()

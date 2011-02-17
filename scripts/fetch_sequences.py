@@ -22,7 +22,7 @@ Genome options (use only one):
 --detect-ref                autodetect the reference genome for each file
                                 only works if you have a directory named
                                 from.MACS with (this is the default)
---path-to-gbdb=foo          If gbdb is not in /gbdb or C:/gbdb,
+--path-to-gbdb=foo          If gbdb is not in /gbdb or C:\gbdb,
                                 specify the path here
                                  
 Options for --peaks:
@@ -45,26 +45,44 @@ Common options:
 --bed                       Make a BED file too saying where sequences come from
 """
 import os
+import platform
 import subprocess
 import StringIO
 import scripter
-from scripter import Usage, print_debug, extend_buffer
-scripter.SCRIPT_DOC = __doc__
-scripter.SCRIPT_VERSION = "2.2"
-scripter.SOURCE_DIR = 'fromBAM.MACS'
-scripter.TARGET_DIR = 'peaks.FASTA'
-scripter.ALLOWED_EXTENSIONS = ['bed', 'xls']
-SOURCE_OPTS = ["from-MACS-subpeaks", "from-MACS-xls",
-               "from-MACS-bed", "peaks", "summits"]
-BOOLEAN_OPTS = ["include-width-in-name", "from-center", "sort", "bed",
-                "detect-ref"] + SOURCE_OPTS
-scripter.SCRIPT_LONG_OPTS = ["ref=", "hg19", "hg18", "mm9", "detect-ref",
-                             "width=","npeaks="] + BOOLEAN_OPTS
+from scripter import Usage, exit_on_Usage, print_debug, extend_buffer, InvalidFileException
+VERSION = "2.4"
+SOURCE_DIR = 'fromBAM.MACS'
+TARGET_DIR = 'peaks.FASTA'
 
 global PATH_TO_UCSC_TOOLS
 global PATH_TO_GBDB
 PATH_TO_UCSC_TOOLS =  "/usr/local/ucsc-bin"
 PATH_TO_GBDB = None
+
+@exit_on_Usage
+def windows_exit():
+   raise Usage('This script is not supported on Microsoft'
+               ' Windows because the underlying utilities'
+               ' are not supported')
+
+def main():
+    if platform.system() == 'Windows': windows_exit()
+    
+    source_opts = ["from-MACS-subpeaks", "from-MACS-xls",
+                   "from-MACS-bed", "peaks", "summits"]
+    boolean_opts = ["include-width-in-name", "from-center", "sort", "bed",
+                    "detect-ref"] + source_opts
+    long_opts = ["ref=", "hg19", "hg18", "mm9", "detect-ref",
+                 "width=","npeaks="] + boolean_opts
+    e = scripter.Environment(long_opts=long_opts, doc=__doc__, version=VERSION)
+    e.parse_boolean_opts(boolean_opts)
+    all_opts = check_script_options(e.get_options(), sources=source_opts,
+                                    debug=e.is_debug())
+    e.update_script_kwargs(all_opts)
+    e.set_source_dir(SOURCE_DIR)
+    e.set_target_dir(TARGET_DIR)
+    e.set_filename_parser(FilenameParser)
+    e.do_action(action)
 
 def path_to_executable(name, directory=PATH_TO_UCSC_TOOLS):
     return scripter.path_to_executable(name, directory=directory)
@@ -88,7 +106,7 @@ def find_2bit_file(ref, path_to_gbdb=PATH_TO_GBDB):
         else:
             raise Usage("Could not find 2bit file", ref)
 
-def check_script_options(options, debug=False):
+def check_script_options(options, sources=[], debug=False):
     sopts = {}
    
     # Find all reference genomes and their paths
@@ -105,15 +123,11 @@ def check_script_options(options, debug=False):
         elif options.has_key("mm9"): ref = "mm9"
         elif options.has_key("ref"): ref = options["ref"]
         sopts["ref"] = find_2bit_file(ref)
-    
-    for option in BOOLEAN_OPTS:
-        pyoption = "_".join(option.split("-"))
-        sopts[pyoption] = options.has_key(option)
 
-    source_count = sum([options.has_key(x) for x in SOURCE_OPTS])
+    source_count = sum([options.has_key(x) for x in sources])
     if not source_count == 1:
         raise Usage("Must specify exactly one of",
-                    " ".join(["".join(["--", x]) for x in SOURCE_OPTS]))
+                    " ".join(["".join(["--", x]) for x in sources]))    
 
     if options.has_key("npeaks"): sopts["npeaks"] = int(options["npeaks"])
 
@@ -135,10 +149,12 @@ def detect_reference(parsed_filename):
 def action(parsed_filename, from_MACS_subpeaks=True, from_MACS_xls=False,
            from_MACS_bed=False, peaks=False, summits=False,
            ref=None, detect_ref=True, width=151, from_center=False,
-           path_to_twobittofa=path_to_executable("twoBitToFa"),
+           path_to_twobittofa=None,
            sort=False, npeaks=None, bed=False,
            debug = False,
            **kwargs):
+    if path_to_twobittofa is None:
+        path_to_twobittofa=path_to_executable("twoBitToFa"),
     if from_MACS_subpeaks:
         sort_item = lambda x: int(x[3]) 
         if from_center:
@@ -266,8 +282,10 @@ def action(parsed_filename, from_MACS_subpeaks=True, from_MACS_xls=False,
     stdout_buffer = extend_buffer(stdout_buffer, stderr_data)
     return stdout_buffer
 
-def get_chrom_lengths(ref, path_to_twoBitInfo=path_to_executable("twoBitInfo"),
+def get_chrom_lengths(ref, path_to_twoBitInfo=None,
                       debug=False, **kwargs):
+    if path_to_twoBitInfo is None:
+        path_to_twoBitInfo=path_to_executable("twoBitInfo")
     chrom_lengths = {}
     job = subprocess.Popen([path_to_twoBitInfo, ref, '/dev/stdout'],
                             stdout=subprocess.PIPE)
@@ -282,6 +300,8 @@ def get_chrom_lengths(ref, path_to_twoBitInfo=path_to_executable("twoBitInfo"),
 class FilenameParser(scripter.FilenameParser):
     def __init__(self, filename, include_width_in_name=False,
                  debug=False, *args, **kwargs):
+        fext = os.path.splitext(filename)[0].lstrip(os.extsep)
+        if not (fext == 'bed' or fext == 'xls'): raise InvalidFileException
         if include_width_in_name:
             target_dir = "".join(["peaks", str(kwargs['width']), ".FASTA"])
         else:
@@ -303,6 +323,4 @@ class FilenameParser(scripter.FilenameParser):
             elif kwargs['peaks'] or kwargs['summits']:
                 if not self.file_extension=="bed": self.is_invalid = True
 
-if __name__=="__main__":
-    scripter.check_script_options = check_script_options
-    scripter.perform(action, FilenameParser)
+if __name__=="__main__": main()

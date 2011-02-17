@@ -12,16 +12,11 @@ calls peaks using MACS
 '''
 import sys
 import os
+import platform
 import subprocess
 import scripter
-from scripter import path_to_executable
-scripter.SCRIPT_DOC = __doc__
-scripter.SCRIPT_VERSION = "2.4"
-scripter.SOURCE_DIR = 'alignments.BAM'
-scripter.TARGET_DIR = 'fromBAM.macs'
-scripter.ALLOWED_EXTENSIONS = ['bam']
-scripter.SCRIPT_LONG_OPTS = ["no-wig", "no-diag", "chrom-wigs", "subpeaks",
-                             "no-pdf", "fix-only", "no-fix"]
+from scripter import path_to_executable, print_debug
+VERSION = "2.4"
 
 # HARDCODED CONTROLS #
 CONTROLS = {
@@ -33,6 +28,22 @@ CONTROLS = {
 }
 # HARDCODED CONTROLS #
 
+def main():
+    long_opts = ["no-wig", "no-diag", "chrom-wigs", "no-subpeaks",
+                 "no-pdf", "fix-only", "no-fix"]
+    e = scripter.Environment(long_opts=long_opts, doc=__doc__, version=VERSION)
+    path_to_macs = path_to_executable(["macs14", "macs14.py", "macs"])
+    if e.is_debug(): print_debug('Found MACS at', path_to_macs)
+    path_to_R = path_to_executable(["R64", "R"])
+    if e.is_debug(): print_debug('Found R at', path_to_R)
+    e.set_source_dir('alignments.BAM')
+    e.set_target_dir('fromBAM.macs')
+    e.update_script_kwargs(check_script_options(e.get_options()))
+    e.update_script_kwargs({'path_to_R': path_to_R,
+                            'path_to_macs': path_to_macs})
+    e.set_filename_parser(FilenameParser)
+    e.do_action(run_macs)
+
 def check_script_options(options):
     specific_options = {}
 
@@ -43,6 +54,7 @@ def check_script_options(options):
     specific_options['make_pdf'] = not options.has_key('no-pdf')
     specific_options['fix_only'] = options.has_key('fix-only')
     specific_options['fix'] = not options.has_key('fix')
+    
     if not specific_options['fix'] and specific_options['fix_only']:
         raise scripter.Usage('Cannot specify both --no-fix and --fix-only')
 
@@ -50,9 +62,11 @@ def check_script_options(options):
 
 class FilenameParser(scripter.FilenameParser):
     def __init__(self, filename, *args, **kwargs):
+        if not os.path.splitext(filename)[1] == '.bam':
+            raise scripter.InvalidFileException(filename)
         super(FilenameParser, self).__init__(filename, *args, **kwargs)
         self.output_dir = os.path.join(self.output_dir, self.protoname)
-        if not self.is_dummy_file: self.check_output_dir(self.output_dir)
+        self.check_output_dir(self.output_dir)
 
         self.has_control = False
         name, ext  = os.path.splitext(self.protoname)
@@ -67,7 +81,7 @@ class FilenameParser(scripter.FilenameParser):
             self.is_control = False
             self.control_file = os.path.join(self.input_dir,
                                     os.extsep.join([CONTROLS[name],
-                                                    self.file_extension]))
+                                                    selff.file_extension]))
         elif name in CONTROLS.values() or self.protoname in CONTROLS.values():
             self.has_control = False
             self.is_control = True
@@ -85,15 +99,10 @@ def _join_opt(a,b):
     '''
     return '='.join([a,b])
 
-def _print_debug(*args):
-    statement = ' '.join(args)
-    print >>sys.stderr, statement
-
-def action(parsed_filename, debug=False, silent=False,
+def run_macs(parsed_filename, debug=False, silent=False,
            wig=True, single_wig=True, diag=True, subpeaks=True,
            make_pdf=True, fix_only=False, fix=True, 
-           path_to_macs=path_to_executable(["macs14", "macs"]),
-           path_to_R=path_to_executable(["R64", "R"]),
+           path_to_macs=None, path_to_R=None,
            **kwargs):
     """Run MACS on a BAM file and produce the pdf from the .R model"""
     if fix_only:
@@ -102,9 +111,9 @@ def action(parsed_filename, debug=False, silent=False,
     if parsed_filename.is_control: return
 
     if debug:
-        _print_debug('Processing', parsed_filename.input_file)
+        print_debug('Processing', parsed_filename.input_file)
         if parsed_filename.has_control:
-            _print_debug('with control', parsed_filename.control_file)
+            print_debug('with control', parsed_filename.control_file)
 
     macs_options = ['--format=BAM']
     if wig:
@@ -119,33 +128,41 @@ def action(parsed_filename, debug=False, silent=False,
         macs_options.append(_join_opt('--control',
                                 _prepend_cwd(parsed_filename.control_file)))
 
-    step = [path_to_macs] + macs_options
-
-    if debug: _print_debug('Launching', ' '.join(step))
+    if path_to_macs is None:
+        path_to_macs = path_to_executable(["macs14", "macs14.py", "macs"])
+    if platform.system() is 'Windows':
+        step = [sys.executable, path_to_macs] + macs_options
+    else:
+        step = [path_to_macs] + macs_options
+    
+    if debug: print_debug('Launching', ' '.join(step))
     job = subprocess.Popen(step,
                            stdout=subprocess.PIPE,
                            stderr=subprocess.STDOUT,
                            cwd=_prepend_cwd(parsed_filename.output_dir))
 
     (stdout_data, stderr_data) = job.communicate()
+    print stdout_data
     stdout_buffer = os.linesep.join([' '.join(step), '', stdout_data])
    
     if subpeaks and fix:
-        output = fix_subpeaks_filename(parsed_filename)
-        if debug: _print_debug(os.linesep.join([stdout_buffer, output]))
+        output = fix_subpeaks_file(parsed_filename)
+        if debug: print_debug(os.linesep.join([stdout_buffer, output]))
 
     # now process R file
     if make_pdf:
         R_file = os.path.join(os.getcwd(), parsed_filename.output_dir,
                               ''.join([parsed_filename.protoname, '_model.r']))
 
-        if debug: _print_debug('Processing', R_file)
+        if debug: print_debug('Processing', R_file)
 
         if not os.path.exists(R_file):
             if not silent:
-                _print_debug('Warning:', R_file, 'does not exist')
+                print_debug('Warning:', R_file, 'does not exist')
         else:
             R_pointer = open(R_file)
+            if path_to_R is None:
+                path_to_R = path_to_executable(["R64", "R"], max_depth=3)
             step =[path_to_R, '--vanilla'] 
             job = subprocess.Popen(step,
                                    stdout=subprocess.PIPE,
@@ -159,7 +176,13 @@ def action(parsed_filename, debug=False, silent=False,
 
     return stdout_buffer
 
-def fix_subpeaks_filename(parsed_filename, debug=False):
+def fix_subpeaks_file(parsed_filename, debug=False):
+    """
+    there's a few problems with the subpeaks file that we fix here
+    
+    1) Breaks MACS naming convention, rename it
+    2) First line is not compatible with BED format, delete it
+    """
     fn_parts = parsed_filename.protoname.split(os.extsep)
     path_to_subpeaks = os.path.join(parsed_filename.output_dir,
                         os.extsep.join([fn_parts[0], 'subpeaks'] + \
@@ -168,13 +191,32 @@ def fix_subpeaks_filename(parsed_filename, debug=False):
     new_path_to_subpeaks = os.path.join(parsed_filename.output_dir,
                             os.extsep.join([fn_parts[0]] + fn_parts[1:-1] + \
                                            [fn_parts[-1] + '_subpeaks', 'bed']))
+    # check if the file exists
+    if os.path.exists(new_path_to_subpeaks):
+        return 'Cannot move {!s} to {!s}. Latter file already exists'.format(
+                                        path_to_subpeaks, new_path_to_subpeaks)
     msg = ' '.join(['Renamed', path_to_subpeaks, 'to', new_path_to_subpeaks])
-    try: os.rename(path_to_subpeaks, new_path_to_subpeaks)
+    try:
+        old_file = open(path_to_subpeaks)
     except OSError:
-        msg = ' '.join(['Could not move', path_to_subpeaks,
-                        'to', new_path_to_subpeaks])
-    return msg
+        return 'Could not open {!s} for reading'.format(path_to_subpeaks)
+    try:
+        new_file = open(path_to_subpeaks, 'w')
+    except OSError:
+        return 'Could not open {!s} for writing'.format(new_path_to_subpeaks)
+    try:
+        discard_first_line = old_file.readline()
+        new_file.writelines(old_file.readlines())
+    except OSError:
+        return 'Something went wrong copying {!s} to {!s}'.format(
+                                        path_to_subpeaks, new_path_to_subpeaks)
+        old_file.close()
+        new_file.close()
+    try:
+        os.remove(path_to_subpeaks)
+    except OSError:
+        return 'Copied {!s} to {!s} but could not remove original'.format(path_to_subpeaks,
+                                                                          new_path_to_subpeaks)
+    return 'Moved {!s} to {!s} successfully'
 
-if __name__=="__main__":
-    scripter.check_script_options = check_script_options
-    scripter.perform(action, FilenameParser)
+if __name__=="__main__": main()
