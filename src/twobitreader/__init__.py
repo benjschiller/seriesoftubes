@@ -3,19 +3,91 @@ import os
 import os.path
 
 class TwoBitReader(object):
+    """
+    python-level reader for .2bit files (i.e., from UCSC genome browser)
+    
+    TwoBitReader.dict() returns a dictionary for access to sequences by name
+    TwoBitReader.sequences() returns a generator that yields sequences
+    """
     def __init__(self, foo):
+        too_short_error = TwoBitReaderError('Premature file end')
+        
         if not os.path.exists(foo):
-            raise IOError('{!s} not found'.format(foo))
+            raise TwoBitReaderError('{!s} not found'.format(foo))
         if not os.access(foo, os.R_OK):
-            raise IOError('Cannot open {!s} for reading'.format(foo))
+            raise TwoBitReaderError('Cannot open {!s} for reading'.format(foo))
         self._filename = foo
-        self._file = open(foo, 'rb')
+        file_handle = open(foo, 'rb')
+        self._file_handle = file_handle
+        #
         # load header
-        raw_header = self._file.read(16)
-        self.header = struct.unpack_from("iiii", raw_header)
-        print self.header
-        (signature, version, sequence_count, reserved) = self.header
+        #
+        try: raw_header = file_handle.read(16)
+        except IOError: raise too_short_error
+        # check signature -- must be 0x1A412743
+        # try little endian first
+        endianess = '<'
+        signature = struct.unpack(endianess + "I", raw_header[0:4])[0]
+        if not signature == 0x1A412743:
+            # try big endian next
+            self._endianness = '>'
+            signature = struct.unpack(endianess + "I", raw_header[0:4])[0]
+            if not signature == 0x1A412743:
+                raise TwoBitReaderError('Invalid 2-bit file signature in header')
+        self._endianess = endianess
+        #else: pass
+        # load the remaining header entries
+        (version, sequence_count,
+         reserved) = struct.unpack(self._endianess + "III", raw_header[4:])
+        if not version == 0: 
+            raise TwoBitReaderError('Invalid 2-bit file version in header')
+        if not reserved == 0: 
+            raise TwoBitReaderError('Invalid 2-bit file reserved header field')
+        self._sequence_count = sequence_count
+        #
         # load index
+        #
+        remaining = sequence_count
+        sequence_offsets = []
+        while True:
+            if remaining == 0: break
+            try: raw_name_size = file_handle.read(1)
+            except IOError: raise too_short_error
+            name_size = struct.unpack(endianess + "B", raw_name_size)[0]
+            try: raw_index = file_handle.read(name_size + 4)
+            except IOError: raise too_short_error
+            # index is (name, offset)
+            index = struct.unpack(endianess + 'c'*name_size + 'I', raw_index)
+            sequence_offset = (''.join(index[0:-1]), index[-1])
+            print sequence_offset
+            sequence_offsets.append(sequence_offset)
+            remaining -= 1
+        self._sequence_offsets = sequence_offsets
+        self._dict = dict(sequence_offsets)
+        self._list = [item[0] for item in sequence_offsets] 
+        # index loaded, done now   
+
+    def dict(self):
+        return _TwoBitDict(self._file_handle, self._dict)
+
+class _TwoBitDict(dict):
+    def __init__(self, file_handle, offset_dict):
+        self._offset_dict = offset_dict
+        
+    def __getitem__(self, i):
+        self._file_handle.seek(self._offset_dict, i)
+    
+    def __setitem__(self, i, value):
+        raise NotImplementedError
+
+class TwoBitReaderError(IOError):
+    """
+    Base exception for TwoBitReader class
+    """
+    def __init__(self, *args):
+        self.msg = ''.join(args)
+    def __str__(self):
+        return self.msg
 
 def print_specification():
     """
