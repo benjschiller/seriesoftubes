@@ -2,7 +2,7 @@
 '''
 acts on bam files
 '''
-import os
+import os.path
 import subprocess
 import collections
 import scripter
@@ -26,6 +26,9 @@ def calculate_duplicates(parsed_filename, debug=False, **kwargs):
     d = collections.defaultdict(lambda: 0)
     dup_counter = 1
     unaligned = 0
+
+    if debug: print_debug('Calculating duplicate rate for',
+                          parsed_filename.input_file)
 
     for read in bam_file:
         # skip mate if it exists
@@ -56,29 +59,17 @@ def calculate_duplicates(parsed_filename, debug=False, **kwargs):
 
     output_filename = os.path.join(parsed_filename.output_dir,
                                    parsed_filename.with_extension('txt'))
-    output_file = open(output_filename, 'w')
-    output_file.write('#')
-    output_file.write(output_filename)
-    output_file.write(os.linesep)
-
-    for k in sorted(d.keys()):
-        output_file.write('\t'.join([str(x) for x in 
-                                    [k,d[k],float(d[k])/float(total_tags)]]))
-        output_file.write(os.linesep)
-
-    output_file.write('\t'.join(['Unique', str(unique_tags),
-                                 str(float(unique_tags)/float(total_tags))]))
-    output_file.write(os.linesep)
-    output_file.write('\t'.join(['Total', str(total_tags), '1.0']))
-    output_file.write(os.linesep)
-    output_file.write('\t'.join(['Unaligned', str(unaligned), '-']))
-    output_file.write(os.linesep)
-
-    output_file.close()
-    stdout_buffer = ' '.join(['Calculated duplicate rate for',
-                             parsed_filename.input_file])
-
-    if debug: return stdout_buffer
-    else: return ''
+    
+    with open(output_filename, 'w') as output_file:
+        output_file.write('#{!s}\n'.format(output_filename))
+        for k in sorted(d.keys()):
+            values = (k, d[k], float(d[k])/float(total_tags))
+            output_file.write('{:3G}\t{!s}\t{:.2E}\n'.format(*values))
+        output_file.write('Unique\t{!s}\t{:.2E}\n'.format(unique_tags,
+                                     float(unique_tags)/float(total_tags)))
+        output_file.write('Total\t{!s}\t1.0\n'.format(total_tags))
+        output_file.write('Unaligned\t{!s}\t-\n'.format(unaligned))
+    
+    return
 
 if __name__=="__main__": main()

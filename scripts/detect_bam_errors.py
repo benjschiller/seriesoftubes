@@ -55,14 +55,13 @@ def parse_MD_value(aligned_read):
 @exit_on_Usage
 def detect_errors(parsed_filename, verbose=False, **kwargs):
     stdout_buffer = ''
-    stdout_buffer += 'Determining basewise error rates in {!s}{!s}'.format( 
-                                             parsed_filename.input_file,
-                                             os.linesep)
+    stdout_buffer += 'Determining basewise error rates in {!s}\n'.format( 
+                                             parsed_filename.input_file)
     seq_length = 0
     errors = defaultdict(lambda: 0)
     num_reads = 0
 
-    with pysam.Samfile(parsed_filename.input_file, 'rb') as pysam_file:
+    with pysam.Samfile(parsed_filename.input_file) as pysam_file:
         for aligned_read in pysam_file:
             num_reads += 1
             seq_length = max(aligned_read.qlen, seq_length)
@@ -70,14 +69,13 @@ def detect_errors(parsed_filename, verbose=False, **kwargs):
             for base in mismatched_bases: errors[base] += 1
 
     if verbose:
-        stdout_buffer += 'Found {!s} sequences{!s}'.format(num_reads, os.linesep)  
-        stdout_buffer += 'Writing error counts to{!s}{!s}'.format(
-                                        parsed_filename.output_filename,
-                                        os.linesep)
+        stdout_buffer += 'Found {!s} sequences\n'.format(num_reads)  
+        stdout_buffer += 'Writing error counts to{!s}\n'.format(
+                                        parsed_filename.output_filename)
 
     with open(parsed_filename.output_filename, 'w') as newfile:
         for pos in xrange(seq_length):
-            newfile.write('{!s}\t{!s}{!s}'.format(pos, errors[pos], os.linesep))
+            newfile.write('{!s}\t{!s}\n'.format(pos, errors[pos]))
 
     return stdout_buffer
 

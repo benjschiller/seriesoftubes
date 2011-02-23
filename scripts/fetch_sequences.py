@@ -19,9 +19,6 @@ Genome options (use only one):
 --ref=foo                   Use 2bit file foo as reference genome
                                 (Looks also for /gbdb/foo/foo.2bit)
 --hg18, --hg19, --mm9       aliases for --ref hg18, etc.
---detect-ref                autodetect the reference genome for each file
-                                only works if you have a directory named
-                                from.MACS with (this is the default)
 --path-to-gbdb=foo          If gbdb is not in /gbdb or C:\gbdb,
                                 specify the path here
                                  
@@ -45,9 +42,12 @@ Common options:
 --bed                       Make a BED file too saying where sequences come from
 """
 import os
+import operator
 import platform
 import subprocess
 import StringIO
+import twobitreader
+import Bio.SeqIO
 import scripter
 from scripter import Usage, exit_on_Usage, print_debug, extend_buffer, InvalidFileException
 VERSION = "2.4"
@@ -57,22 +57,15 @@ TARGET_DIR = 'peaks.FASTA'
 global PATH_TO_UCSC_TOOLS
 global PATH_TO_GBDB
 PATH_TO_UCSC_TOOLS =  "/usr/local/ucsc-bin"
-PATH_TO_GBDB = None
-
-@exit_on_Usage
-def windows_exit():
-   raise Usage('This script is not supported on Microsoft'
-               ' Windows because the underlying utilities'
-               ' are not supported')
 
 def main():
-    if platform.system() == 'Windows': windows_exit()
+#    if platform.system() == 'Windows': windows_exit()
     
     source_opts = ["from-MACS-subpeaks", "from-MACS-xls",
                    "from-MACS-bed", "peaks", "summits"]
-    boolean_opts = ["include-width-in-name", "from-center", "sort", "bed",
-                    "detect-ref"] + source_opts
-    long_opts = ["ref=", "hg19", "hg18", "mm9", "detect-ref",
+    boolean_opts = ["include-width-in-name", "from-center", "sort",
+                    "bed"] + source_opts
+    long_opts = ["ref=", "hg19", "hg18", "mm9", "path-to-gbdb=",
                  "width=","npeaks="] + boolean_opts
     e = scripter.Environment(long_opts=long_opts, doc=__doc__, version=VERSION)
     e.parse_boolean_opts(boolean_opts)
@@ -82,29 +75,33 @@ def main():
     e.set_source_dir(SOURCE_DIR)
     e.set_target_dir(TARGET_DIR)
     e.set_filename_parser(FilenameParser)
-    e.do_action(action)
+    e.do_action(get_sequences)
 
 def path_to_executable(name, directory=PATH_TO_UCSC_TOOLS):
     return scripter.path_to_executable(name, directory=directory)
 
-def find_2bit_file(ref, path_to_gbdb=PATH_TO_GBDB):
-    if ref is None:
-        raise Usage("No reference genome specified")
-    if os.path.exists(ref):
-        return ref
-    else:
-        new_path = os.path.join("gbdb", ref, os.extsep.join([ref, "2bit"]))
-        if path_to_gbdb is not None:
-            specified_path = os.path.join(path_to_gbdb, ref,
-                                          os.extsep.join([ref, "2bit"]))
-            if os.path.exists(specified_path):
-                return specified_path
-        if os.path.exists(os.sep + new_path):
-            return os.sep + new_path
-        elif os.path.exists("C:" + os.sep + new_path):
-            return "C" + os.sep + new_path
-        else:
-            raise Usage("Could not find 2bit file", ref)
+def find_2bit_file(ref, path_to_gbdb=None):
+    if ref is None: raise Usage("No reference genome specified")
+    if os.path.exists(ref): return ref
+    fname = "{!s}{!s}2bit".format(ref, os.extsep)
+    if path_to_gbdb is not None:
+        # check in its own dir
+        specified_path = os.path.join(path_to_gbdb, ref, fname)
+        if os.path.exists(specified_path): return specified_path
+        # check in the main dir
+        specified_path = os.path.join(path_to_gbdb, fname)
+        if os.path.exists(specified_path): return specified_path
+    # try absolute paths
+    new_path = os.path.join("gbdb", ref, fname)
+    if platform.system() == 'Windows':
+        home_drive = os.environ['HOMEDRIVE']
+        windows_path = "{!s}{!s}{!s}".format(home_drive, os.sep, new_path)
+        if os.path.exists(windows_path): return windows_path
+    else: # assume *nix
+        unix_path = os.sep + new_path
+        if os.path.exists(unix_path): return unix_path
+    # give up
+    raise Usage("Could not find 2bit file ", fname)
 
 def check_script_options(options, sources=[], debug=False):
     sopts = {}
@@ -112,6 +109,12 @@ def check_script_options(options, sources=[], debug=False):
     # Find all reference genomes and their paths
     options_count = sum([options.has_key("hg18"), options.has_key("hg19"),
                         options.has_key("mm9"), options.has_key("ref")])
+    
+    if options.has_key('path-to-gbdb'):
+        path_to_gbdb = options['path-to-gbdb']
+        sopts["path_to_gbdb"] = path_to_gbdb
+    else:
+        path_to_gbdb = None
     ref = None
     if options_count == 0:
         ref = None
@@ -122,7 +125,7 @@ def check_script_options(options, sources=[], debug=False):
         elif options.has_key("hg19"): ref = "hg19"
         elif options.has_key("mm9"): ref = "mm9"
         elif options.has_key("ref"): ref = options["ref"]
-        sopts["ref"] = find_2bit_file(ref)
+        sopts["ref"] = find_2bit_file(ref, path_to_gbdb)
 
     source_count = sum([options.has_key(x) for x in sources])
     if not source_count == 1:
@@ -142,19 +145,27 @@ def check_script_options(options, sources=[], debug=False):
 
     return sopts
 
-def detect_reference(parsed_filename):
+def detect_reference(parsed_filename, path_to_gbdb=None):
     # finish
-    return find_2bit_file("hg19")
+    return find_2bit_file("hg19", path_to_gbdb=path_to_gbdb)
 
-def action(parsed_filename, from_MACS_subpeaks=True, from_MACS_xls=False,
+def write_to_fasta(file_handle, sequence, name=''):
+    # write first line
+    file_handle.write('>{!s}\n'.format(name))
+    # write sequence
+    num_lines = (len(sequence)+ 59 ) / 60
+    for j in xrange(num_lines):
+        start = 0 + j*60
+        end = 60 + j*60
+        file_handle.write('{!s}\n'.format(sequence[start:end]))
+    return
+
+def get_sequences(parsed_filename, from_MACS_subpeaks=True, from_MACS_xls=False,
            from_MACS_bed=False, peaks=False, summits=False,
-           ref=None, detect_ref=True, width=151, from_center=False,
-           path_to_twobittofa=None,
+           ref=None, width=151, from_center=False, path_to_gbdb=None,
            sort=False, npeaks=None, bed=False,
            debug = False,
            **kwargs):
-    if path_to_twobittofa is None:
-        path_to_twobittofa=path_to_executable("twoBitToFa"),
     if from_MACS_subpeaks:
         sort_item = lambda x: int(x[3]) 
         if from_center:
@@ -165,6 +176,7 @@ def action(parsed_filename, from_MACS_subpeaks=True, from_MACS_xls=False,
             start_coord = lambda x: int(x[1])
             end_coord = lambda x: int(x[2])
     if from_MACS_xls:
+        sort_item = lambda x: int(x[5])
         if from_center:
             center_coord = lambda x: int(x[1]) + int(x[4]) # start + 5th col
             start_coord = lambda x: center_coord(x) - width/2
@@ -173,7 +185,7 @@ def action(parsed_filename, from_MACS_subpeaks=True, from_MACS_xls=False,
             start_coord = lambda x: int(x[1])
             end_coord = lambda x: int(x[2]) - 1
     if from_MACS_bed or peaks:
-        sort_item = lambda x: float(x[4]) 
+        sort_item = lambda x: float(x[4])
         if from_center:
             center_coord = lambda x: (int(x[1]) + int(x[2])) / 2
             start_coord = lambda x: center_coord(x) - width/2
@@ -188,8 +200,6 @@ def action(parsed_filename, from_MACS_subpeaks=True, from_MACS_xls=False,
         start_coord = lambda x: center_coord(x) - width/2
         end_coord = lambda x: center_coord(x) + width/2 + 1
 
-
-    stdout_buffer =""
     # output file
     output_file = os.path.join(parsed_filename.output_dir,
                                os.extsep.join([parsed_filename.protoname,
@@ -199,128 +209,96 @@ def action(parsed_filename, from_MACS_subpeaks=True, from_MACS_xls=False,
                                                 'bed']))
 
     if ref is None:
-        ref = detect_reference(parsed_filename)
+        ref = detect_reference(parsed_filename, path_to_gbdb)
     if debug:
         print_debug("Using", ref, "to extract sequences", "from", 
                     parsed_filename.input_file, "to", output_file)
-    input_file = open(parsed_filename.input_file)
+        
+    ref_genome = twobitreader.TwoBitFile(ref)
+    output_handle = open(output_file, 'w')
+    input_file = open(parsed_filename.input_file, 'rU')
     input_lines = (line.rstrip() for line in input_file)
 
     if debug: print_debug("Determining chromsome lengths for", ref)
-    chrom_lengths = get_chrom_lengths(ref, debug=debug)
+    chrom_lengths = ref_genome.sequence_sizes()
     valid_chroms = chrom_lengths.keys()
-
 
     if bed: bed_file = open(bed_filename, 'w')
     if debug: print_debug("Now converting") 
-    step = [path_to_twobittofa, "-seqList=/dev/stdin", ref, "/dev/stdout"]
-    job = subprocess.Popen(step,
-                           stdin=subprocess.PIPE,
-                           stdout=open(output_file, 'w'),
-                           stderr=subprocess.PIPE)
     # if we're going to sort, we'll have to hold the list in memory
-    if sort:
-        seq_list = []
-        sort_list = []
-        bed_list = []
-    else:
-        seq_list = job.stdin
     num_peaks = 0
+    bed_template = "{!s}\t{!s}\t{!s}\tpeak{!s}\t{!s}\t+\n"
+    seq_list = [] 
     for line in input_lines:
         words = line.split()
+        if len(words) == 0: continue
         # determine chrom/contig
         chrom = words[0].lower()
         # skip if not a valid contig/chrom
         if not chrom in valid_chroms: continue
         # determine start and end
-        start = str(start_coord(words))
-        end = str(end_coord(words))
+        start = start_coord(words)
+        end = end_coord(words)
         # skip if we've already fallen off the chromosome
         if int(start) > chrom_lengths[chrom]: continue
-        # truncate chrom ends
-        start = str(max(int(start), 0))
-        end = str(min(int(end), chrom_lengths[chrom]))
+        # truncate chrom start for MACS
         num_peaks += 1
+        start = max(int(start), 0)
+        end = end # don't need to truncate end, twobitreader does that
+        name = "peak_{!s}".format(num_peaks)
+        sitem = (chrom, start, end, name, sort_item(words))
+        if sort:
+            seq_list.append(sitem)
+        else:
+            sequence = ref_genome[chrom][start:end]
+            write_to_fasta(output_handle, sequence, name=name)
+            if bed:
+                bed_file.write(bed_template.format(*sitem))
         if debug:
             if num_peaks%1000 == 0: print_debug(str(num_peaks))
 
-        if bed:
-            bed_line = "\t".join([chrom, start, end, "peak" + str(num_peaks),
-                                  str(sort_item(words)), "+"]) + os.linesep
-        if sort:
-            seq_list.append("".join([chrom, ":",
-                                         start, "-", end, os.linesep]))
-            sort_list.append(sort_item(words))
-            if bed: bed_list.append(bed_line)
-        else:
-            seq_list.writelines("".join([chrom, ":",
-                                         start, "-", end, os.linesep]))
-            if bed: bed_file.write(bed_line)
-
     if sort:
         if debug: print_debug("Sorting")
-        sorterator = (sitem for sitem in sorted(zip(sort_list, seq_list)))
-        if bed:
-            sorterator = (sitem for sitem in 
-                                sorted(zip(sort_list, seq_list, bed_list)))
-        if npeaks is not None and npeaks < num_peaks:
-            if debug: print_debug("Taking top", str(npeaks), "peaks")
-            sorted_list = []
-            for x in range(npeaks):
-                sitem = sorterator.next()
-                sorted_list.append(sitem[1])
-                if bed: bed_file.write(sitem[2])
+        sorted_list = sorted(seq_list, key=operator.itemgetter(4), reverse=True)
+        if npeaks is None or num_peaks < npeaks:
+            npeaks = num_peaks
+            if debug: print_debug("Using all {!s} peaks".format(npeaks))
         else:
-            if debug: print_debug("Using all", str(num_peaks), "peaks")
-            sorted_list = [sitem[1] for sitem in sorterator]
-            if bed: bed_file.writelines([sitem[2] for sitem in sorterator])
-        (stdout_data, stderr_data) = job.communicate(
-                                        os.linesep.join(sorted_list))
-    else:
-        (stdout_data, stderr_data) = job.communicate()
+            if debug: print_debug("Using top {!s} peaks".format(npeaks))
+                
+        for x in xrange(npeaks):
+            sitem = sorted_list[x]
+            chrom, start, end = sitem[0:3]
+            sequence = ref_genome[chrom][start:end]
+            write_to_fasta(output_handle, sequence, name=sitem[3])
+            if bed: bed_file.write(bed_template.format(*sitem))
+            
+    output_handle.close()
+    if bed: bed_file.close()
+    return
 
-    stdout_buffer = extend_buffer(stdout_buffer, stderr_data)
-    return stdout_buffer
-
-def get_chrom_lengths(ref, path_to_twoBitInfo=None,
-                      debug=False, **kwargs):
-    if path_to_twoBitInfo is None:
-        path_to_twoBitInfo=path_to_executable("twoBitInfo")
-    chrom_lengths = {}
-    job = subprocess.Popen([path_to_twoBitInfo, ref, '/dev/stdout'],
-                            stdout=subprocess.PIPE)
-    (stdout_data, stderr_data) = job.communicate()
-    for chrom in stdout_data.split(os.linesep):
-        if chrom.strip()=='': continue
-        (chrom_name, chrom_size) = chrom.split()
-        chrom_lengths[chrom_name] = int(chrom_size)
-        if debug: print_debug(chrom_name, "has length", chrom_size)
-    return chrom_lengths
 
 class FilenameParser(scripter.FilenameParser):
-    def __init__(self, filename, include_width_in_name=False,
+    def __init__(self, filename, include_width_in_name=False, target_dir=None,
                  debug=False, *args, **kwargs):
-        fext = os.path.splitext(filename)[0].lstrip(os.extsep)
+        fext = os.path.splitext(filename)[1].lstrip(os.extsep)
         if not (fext == 'bed' or fext == 'xls'): raise InvalidFileException
         if include_width_in_name:
-            target_dir = "".join(["peaks", str(kwargs['width']), ".FASTA"])
-        else:
-            target_dir = None
+            target_dir = "peaks_{!s}bp.FASTA".format(kwargs['width'])
         super(FilenameParser, self).__init__(filename, debug=debug,
                                              target_dir=target_dir,
                                              *args, **kwargs)
-
-        if not self.is_dummy_file:
-            if kwargs['from_MACS_subpeaks']:
-                if not self.input_file.endswith("_subpeaks.bed"):
-                    self.is_invalid = True
-            elif kwargs['from_MACS_xls']:
-                if not self.input_file.endswith("_peaks.xls"):
-                    self.is_invalid = True
-            elif kwargs['from_MACS_bed']:
-                if not self.protoname.endswidth("_peaks.bed"):
-                    self.is_invalid = True
-            elif kwargs['peaks'] or kwargs['summits']:
-                if not self.file_extension=="bed": self.is_invalid = True
+        if kwargs['from_MACS_subpeaks']:
+            if not self.input_file.endswith("_subpeaks.bed"):
+                raise InvalidFileException
+        elif kwargs['from_MACS_xls']:
+            if not self.input_file.endswith("_peaks.xls"):
+                raise InvalidFileException
+        elif kwargs['from_MACS_bed']:
+            if not self.protoname.endswidth("_peaks.bed"):
+                raise InvalidFileException
+        elif kwargs['peaks'] or kwargs['summits']:
+            if not self.file_extension=="bed":
+                raise InvalidFileException
 
 if __name__=="__main__": main()

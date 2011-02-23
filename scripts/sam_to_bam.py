@@ -85,7 +85,7 @@ def pysam_wrapper(pysam_args, pysam_func=None, expected_error='',
 
     if type(execution) is list:
         if len(execution) is 0: return ''
-        else: return os.linesep.join(execution)
+        else: return '\n'.join(execution)
     elif type(execution) is str:
         return execution
     else:
@@ -119,10 +119,10 @@ def convert_sam_to_bam(parsed_filename, verbose=False, debug=False,
     if debug: print_debug(indexing)
 
     if debug: print_debug('Removing temporary file', parsed_filename.temp_file)
-    elif verbose: stdout_buffer = os.linesep.join([stdout_buffer, 
-                                                  'Converting...', converting,
-                                                  'Sorting...', sorting,
-                                                  'Indexing', indexing])
+    elif verbose: stdout_buffer = '\n'.join([stdout_buffer, 
+                                             'Converting...', converting,
+                                             'Sorting...', sorting,
+                                             'Indexing', indexing])
 
     os.remove(parsed_filename.temp_file)
 

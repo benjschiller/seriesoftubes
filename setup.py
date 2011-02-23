@@ -10,7 +10,8 @@ Copyright (c) 2010 Benjamin Schiller <benjamin.schiller@ucsf.edu>
 All rights reserved.
 """
 
-import os, sys
+import os
+import sys
 from distutils.core import setup
 try: import py2exe
 except ImportError: pass
@@ -26,9 +27,9 @@ def main():
 	      description='An extended pipeline for Solexa ChIP-seq data',
 	      author='Benjamin Schiller',
 	      author_email='benjamin.schiller@ucsf.edu',
-          install_requires = ['scripter>=2.0-rc2', 'biopython>=1.56', 'pysam>=0.3.1'],
-	      packages = [],
-	      package_dir = {},
+          install_requires = ['scripter>=2.0.2', 'biopython>=1.56',
+							  'pysam>=0.4'],
+	      packages = ['twobitreader', 'bioplus'],
           scripts = [os.path.join('scripts', x) for x in os.listdir('scripts') 
                      if not x.startswith('.')]
 	      )

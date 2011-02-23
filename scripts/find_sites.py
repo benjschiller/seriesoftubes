@@ -21,15 +21,13 @@ from scripter import Usage, print_debug, extend_buffer, InvalidFileException
 import Bio
 import Bio.Motif
 import bioplus
-import bioplus.sitefinder
 from bioplus.sitefinder import find_sites
 try:
     import MOODS
 except ImportError:
     print_debug('WARNING: MOODS is not installed. You may obtain it from '
                 'http://www.cs.helsinki.fi/group/pssmfind/')
-
-SCRIPT_VERSION = "2.4"
+VERSION = "2.4"
 
 def main():
     boolean_opts = ["bed", "xls"]
@@ -90,7 +88,7 @@ def action(parsed_filename, motif, bed=True, xls=False,
                                parsed_filename.fasta_file,
                                motif, bed=bed, xls=xls,
                                output_dir=parsed_filename.output_dir,
-                               src_fnc = "findSites.py",
+                               src_fnc = "find_sites.py",
                                debug=debug)
     if not silent: return stdout_buffer
 

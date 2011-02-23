@@ -125,14 +125,12 @@ def action(filename, references=[], random=True, unique=True,
                 bowtie_args = [path_to_bowtie] + flags + [ref, 
                                                           filename.input_file, 
                                                           path_to_output]
-            sys.stdout.write(os.linesep)
-            sys.stdout.write(' '.join(bowtie_args))
-            sys.stdout.write(os.linesep)
+            sys.stdout.write('\n%s\n' % join(bowtie_args))
             sys.stdout.flush()
             bowtie_job = subprocess.call(bowtie_args,
                                          stdout=sys.stdout,
                                          stderr=subprocess.STDOUT)
-            if verbose: print_debug("Finished")
+            if debug: print_debug("Finished")
     return
 
 def get_pair_info(illumina_name):

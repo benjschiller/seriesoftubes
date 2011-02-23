@@ -25,7 +25,7 @@ def main():
     e.parse_boolean_opts(boolean_opts)
     e.update_script_kwargs(check_script_options(e.get_options()))
     e.set_filename_parser(BarcodeFilenameParser)
-    e.do_action(separate_barcodes)
+    e.do_action(split_file)
 
 def check_script_options(options):
     sopts = {}
@@ -39,15 +39,6 @@ def check_script_options(options):
 
     return sopts
 
-def separate_barcodes(parsed_filename, **kwargs):
-    stdout_buffer = ''
-    verbose = kwargs['verbose']
-    debug = kwargs['debug']
-    split_names = split_file(parsed_filename, **kwargs)
-    if verbose:
-        stdout_buffer += ' '.join(['Split', parsed_filename.input_file, 'as'
-                                   ", ".join(split_names), os.linesep])
-    return stdout_buffer
 
 class IlluminaID:
     def __init__(self, name):
@@ -186,7 +177,11 @@ def split_file(parsed_filename, barcodes=DEFAULT_BARCODES,
     f.close()
     for f_ in files.values(): f_.close()
     unmatched_file.close()
-    return filenames
+    
+    if verbose:
+        return 'Split {!s} as {!s}'.format(parsed_filename.input_file,
+                                           join(filenames))
+    else: return
 
 def _complement(nucleotide):
     '''returns the complement of a single nucleotide'''

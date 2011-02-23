@@ -1,10 +1,9 @@
 #!/usr/bin/env python
 '''
---sam-in            Input files are SAM (not BAM)
 --sam-out           Output SAM files (not BAM)
 --remove-all        Remove all reads in mapped BAM/SAM file, not just mapped ones
 
-subtracts bam files based on sequence names
+subtracts BAM (or SAM) files based on sequence names
 (for example, use to remove reads that also map rRNA)
 
 outputs to alignments_filtered.BAM
@@ -22,88 +21,55 @@ import os
 import subprocess
 import collections
 import scripter
-from scripter import print_debug
+from scripter import print_debug, InvalidFileException
 import pysam
-scripter.SCRIPT_DOC = __doc__
-scripter.SCRIPT_VERSION = "2.2"
-scripter.SOURCE_DIR = 'alignments.BAM'
-scripter.TARGET_DIR = 'alignments_filtered.BAM'
-BOOLEAN_OPTS = ["sam-in", "sam-out", "remove-all"]
-scripter.SCRIPT_LONG_OPTS = BOOLEAN_OPTS
-scripter.ALLOWED_EXTENSIONS = ['sam', 'bam']
+VERSION = "2.4"
 
-def check_script_options(options):
-    specific_options = {}
-
-    for option in BOOLEAN_OPTS:
-        pyoption = "_".join(option.split("-"))
-        specific_options[pyoption] = options.has_key(option)
-
-    return specific_options
-
-def get_removable_reads(parsed_filename, sam_in=False, remove_all=False,
-                        debug=False,
-                        **kwargs):
-    '''
-returns a list of read names that are mapped from a BAM file
-
-looks at parsed_filename.
-'''
-    removable_reads = []
-
-    if sam_in: open_opts = 'r'
-    else: open_opts = 'rb'
-    bam_file = pysam.Samfile(parsed_filename.mapped_file, open_opts)
-
-    if remove_all:
-        return [read.qname for read in bam_file]
-
-    for read in bam_file:
-        if is_mapped(read): removable_reads.append(read.qname)
-
-    if debug: print_debug('Found', str(len(removable_reads)), 'reads in',
-                          parsed_filename.mapped_file)
-
-    bam_file.close()
-
-    return set(removable_reads)
-
+def main():
+    boolean_opts = ["sam-out", "remove-all"]
+    e = scripter.environment(version=VERSION, doc=__doc__)
+    e.parse_boolean_opts(boolean_opts)
+    e.set_source_dir('alignments.BAM')
+    e.set_target_dir('alignments_filtered.BAM')
+    e.set_filename_parser(SubtractFilenameParser) 
+    e.do_action(action)
+    
 def is_mapped(read):
     '''
-true if a pysam.AlignedRead is mapped
-also checks if read is paired end; if so, returns if the pair is mapped
-'''
-    if read.is_paired:
-        if read.is_proper_pair: return True
-        else: return False
-    else:
-        if read.is_unmapped: return False
-        else: return True
+    true if a pysam.AlignedRead is properly mapped, otherwise false
+    (checks if read is paired end; if so, returns if the pair is mapped)
+    '''
+    if read.is_paired: return read.is_proper_pair
+    else: return not read.is_unmapped
 
-def remove_reads(parsed_filename, reads_to_remove, sam_in=False, sam_out=False,
+def remove_reads(parsed_filename, remove_all=False, sam_out=False,
                  debug=False, **kwargs):
     '''
 note: you must be looking at a sorted file, or this won't work
 '''
 
-    if sam_in:
-        open_opts = 'r'
-        write_opts = 'w'
-    else:
-        open_opts = 'rb'
-        write_opts = 'wb'
+    if sam_out: write_opts = 'w'
+    else: write_opts = 'wb'
 
-    bam_file = pysam.Samfile(parsed_filename.input_file, open_opts)
-    out_bam_file = pysam.Samfile(parsed_filename.output_file, write_opts,
-                                 template = bam_file)
-    for read in bam_file:
-        if read.qname in reads_to_remove: continue
-        else: out_bam_file.write(read)
+    with pysam.Samfile(parsed_filename.mapped_file) as mapped:
+        if remove_all:
+            reads_to_remove = set([read.qname for read in mapped])
+        else:
+            reads_to_remove = set([read.qname for read in mapped
+                                   if is_mapped(read)])
 
-    bam_file.close()
-    out_bam_file.close()
+    if debug:
+        print_debug('Found {!s} reads in {!s}'.format(len(reads_to_remove),
+                                                   parsed_filename.mapped_file))
+    
+    with pysam.Samfile(parsed_filename.input_file) as bam_file:
+        with pysam.Samfile(parsed_filename.output_file, write_opts,
+                           template = bam_file) as out_bam_file:
+            for read in bam_file:
+                if read.qname not in reads_to_remove:
+                    out_bam_file.write(read)
 
-    return ''
+    return
 
 class SubtractBamFilenameParser(scripter.FilenameParser):
     def __init__(self, filename, verbose=False, sam_out=False,
@@ -114,6 +80,8 @@ class SubtractBamFilenameParser(scripter.FilenameParser):
                                                         sam_out=sam_out,
                                                         *args,
                                                         **kwargs)
+        fext = os.path.splitext(filename)[1].rstrip(os.extsep)
+        if not (fext == 'sam' or fext =='bam'): raise InvalidFileException
         if not self.is_dummy_file:
             # check for the mapped_file
             input_dir_parts = self.input_dir.split(os.sep)
@@ -141,10 +109,4 @@ class SubtractBamFilenameParser(scripter.FilenameParser):
             if debug:
                 print_debug('Output file will be', self.output_file)
 
-def action(parsed_filename, **kwargs):
-    removable_reads = get_removable_reads(parsed_filename, **kwargs)
-    return remove_reads(parsed_filename, removable_reads, **kwargs)
-
-if __name__=="__main__":
-    scripter.check_script_options = check_script_options
-    scripter.perform(action, SubtractBamFilenameParser)
+if __name__=="__main__": main()

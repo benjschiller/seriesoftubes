@@ -142,12 +142,11 @@ def run_macs(parsed_filename, debug=False, silent=False,
                            cwd=_prepend_cwd(parsed_filename.output_dir))
 
     (stdout_data, stderr_data) = job.communicate()
-    print stdout_data
-    stdout_buffer = os.linesep.join([' '.join(step), '', stdout_data])
+    stdout_buffer = '{!s}\n\n{!s}'.format(join(step), stdout_data)
    
     if subpeaks and fix:
         output = fix_subpeaks_file(parsed_filename)
-        if debug: print_debug(os.linesep.join([stdout_buffer, output]))
+        if debug: print_debug('{!s}\n{!s}'.format(stdout_buffer, output))
 
     # now process R file
     if make_pdf:
@@ -171,8 +170,9 @@ def run_macs(parsed_filename, debug=False, silent=False,
                                    cwd=_prepend_cwd(parsed_filename.output_dir))
             (stdout_data, stderr_data) = job.communicate()
             R_pointer.close()
-            stdout_buffer = os.linesep.join([stdout_buffer, '', '',
-                                            ' '.join(step), stdout_data, ''])
+            stdout_buffer = '{!s}\n\n{!s}\n{!s}\n'.format(stdout_buffer,
+                                                          ' '.join(step),
+                                                          stdout_data)
 
     return stdout_buffer
 

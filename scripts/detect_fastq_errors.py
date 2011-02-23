@@ -11,7 +11,6 @@ from Bio.SeqIO.QualityIO import FastqGeneralIterator
 import os
 import operator
 import scripter
-import numpy
 
 VERSION = "2.4"
 
@@ -22,17 +21,16 @@ def main():
     e.do_action(detect_errors)
 
 def detect_errors(parsed_filename, verbose=False, debug=False, **kwargs):
-    if verbose:
-        stdout_buffer = ''.join(['Determining basewise error rates in',
-                                 parsed_filename.input_file, os.linesep])
+    if debug:
+        stdout_buffer = 'Determining basewise error rates in {!s}\n'.format(
+                                                    parsed_filename.input_file)
     else: stdout_buffer = ''
     
     handle = open(parsed_filename.input_file, 'rU')
     record_generator = FastqGeneralIterator(handle)
     
     title, seq, qual = record_generator.next()
-    counter = lambda x: [x == 'A', x =='T', x == 'G', x == 'C',
-                                     x == 'N']
+    counter = lambda x: [x == 'A', x =='T', x == 'G', x == 'C', x == 'N']
     counts = map(counter, seq.upper())
     count_len = len(counts)
     j=0
@@ -49,7 +47,6 @@ def detect_errors(parsed_filename, verbose=False, debug=False, **kwargs):
     f = open(output_filename, 'w')
     first_row = ("cycle", "pyindex", "A", "T", "G", "C", "N")
     f.write('\t'.join(["{!s}"]*6).format(*first_row))
-#    for i in range(counts.shape[0]):
     counts = list(counts)
     for i in range(count_len):
         row = (i+2, i, counts[i][0], counts[i][1], counts[i][2], counts[i][3],

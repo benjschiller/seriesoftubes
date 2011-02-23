@@ -2,7 +2,7 @@
 '''
 removes PCR duplicates from BAM files using samtools
 '''
-import os
+import os.path
 import subprocess
 import scripter
 import pysam

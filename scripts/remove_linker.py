@@ -77,7 +77,7 @@ def action(parsed_filename, linker='', verbose=False, **kwargs):
     # close and exit #
     f.close()
     output_file.close()
-    return os.linesep.join([parsed_filename.output_filename,
+    return '\n'.join([parsed_filename.output_filename,
                             'Processed ' + str(i) + ' records',
                             str(linker_only) + ' linker only dimers',
                             str(too_short) + ' sequences too short (1-3 bp)'])

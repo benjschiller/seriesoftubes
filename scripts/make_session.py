@@ -10,7 +10,7 @@ def main():
     '''the main function'''
 
     if len(sys.argv) == 1:
-        sys.stderr.write( 'Usage: ./convertSamToBam.py file1.bam file2.bam ...' + os.linesep )
+        sys.stderr.write( 'Usage: ./convertSamToBam.py file1.bam file2.bam ...\n')
         sys.exit()
 # else
     filenames = sys.argv[1:]
@@ -19,7 +19,7 @@ def main():
             if not os.path.exists(os.getcwd() + os.sep + filename):
                 sys.stderr.write('Error: file not found (' \
                     + os.curdir + os.sep + filename \
-                    + '). Exiting...' + os.linesep)
+                    + '). Exiting...\n')
                 sys.exit(1)
 
             track_line = get_track_line(filename)
