@@ -1,6 +1,9 @@
+"""
+tools for dealing with binding sites (instances of sequence motifs)
+"""
 import os.path
-import tools
-from bioplus.tabfile import TabFile, MacsFile, BedFile
+from seqtools import rc
+from tabfile import TabFile, MacsFile, BedFile
 import operator
 import Bio.Motif
 import Bio.SeqIO
@@ -24,9 +27,7 @@ def _reverse_complement(forward_seq):
     try:
         site_seq = forward_seq.reverse_complement()
     except AttributeError:
-        site_seq = tools.rc(forward_seq)
-    # NOTE: You need to define this function if you have separated this
-    # file from the entire package
+        site_seq = rc(forward_seq)
     return site_seq
 
 def MOODS_search(seq, motif, thresholds=0):
@@ -250,7 +251,7 @@ Site (1) chr (2) start (3) end
     
     for peak in peak_generator:
         if debug:
-            if peaknumber%1000 is 0: print peaknumber
+            if peaknumber%10000 is 0: print peaknumber
         peaknumber += 1
         seq = peak_seqs.next()
         # Generate a peak ID
@@ -287,45 +288,3 @@ sites in {!s} using a cutoff of 0".format(nosites, peaknumber, fasta_file)
     g.write(message)
     g.close()
     return stdout_buffer
-
-
-def _site_bed_row(motif_length, Ri, position, result_number,
-        coordinates=None, region_name='Unnamed_region'):
-    '''takes as input a motif, and 
-    the information content (Ri) and position of site
-    (as as returned by motif.search_pwm) and
-    the result_number
-
-    and optionally a dictionary peak_info containing
-        peak_coordinates, a tuple (chrom, chrom_start, chrom_end)
-        clean_peak_seq
-
-    ad optionally the name of the enclosing region
-
-    returns a list, which is the BED row for that site
-
-    if coordinates are not specified, we will use region_name for the reference column and give 0-based, end-open coordinates
-    '''
-    # enforce no spaces
-    region_name = '_'.join(region_name.split())
-    
-    offset = abs(position)
-    if position > 0:
-        strand = '+'
-    else:
-        strand = '-'
-    
-    site_ID = '_'.join([str(x) for x in
-                [region_name, 'motif', result_number]])
-
-    if coordinates is not None:
-        chrom = coordinates[0]
-        chrom_start = coordinates[1]
-        site_bed_row = [chrom, chrom_start + offset,
-                chrom_start + offset + motif_length,
-                site_ID, Ri, strand]
-    else:
-        site_bed_row = [region_name, offset, offset + motif_length,
-                site_ID, Ri, strand]
-
-    return site_bed_row

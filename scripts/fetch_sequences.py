@@ -44,19 +44,12 @@ Common options:
 import os
 import operator
 import platform
-import subprocess
-import StringIO
 import twobitreader
-import Bio.SeqIO
 import scripter
-from scripter import Usage, exit_on_Usage, print_debug, extend_buffer, InvalidFileException
+from scripter import Usage, print_debug, InvalidFileException
 VERSION = "2.4"
 SOURCE_DIR = 'fromBAM.MACS'
 TARGET_DIR = 'peaks.FASTA'
-
-global PATH_TO_UCSC_TOOLS
-global PATH_TO_GBDB
-PATH_TO_UCSC_TOOLS =  "/usr/local/ucsc-bin"
 
 def main():
 #    if platform.system() == 'Windows': windows_exit()
@@ -76,9 +69,6 @@ def main():
     e.set_target_dir(TARGET_DIR)
     e.set_filename_parser(FilenameParser)
     e.do_action(get_sequences)
-
-def path_to_executable(name, directory=PATH_TO_UCSC_TOOLS):
-    return scripter.path_to_executable(name, directory=directory)
 
 def find_2bit_file(ref, path_to_gbdb=None):
     if ref is None: raise Usage("No reference genome specified")
@@ -262,9 +252,11 @@ def get_sequences(parsed_filename, from_MACS_subpeaks=True, from_MACS_xls=False,
         sorted_list = sorted(seq_list, key=operator.itemgetter(4), reverse=True)
         if npeaks is None or num_peaks < npeaks:
             npeaks = num_peaks
-            if debug: print_debug("Using all {!s} peaks".format(npeaks))
+            if debug: print_debug("Writing results for \
+all {!s} peaks".format(npeaks))
         else:
-            if debug: print_debug("Using top {!s} peaks".format(npeaks))
+            if debug: print_debug("Writing results for \
+top {!s} peaks".format(npeaks))
                 
         for x in xrange(npeaks):
             sitem = sorted_list[x]

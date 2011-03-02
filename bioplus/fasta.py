@@ -1,9 +1,8 @@
-# this module contains meta-tools for large FASTA files
-# and requires python
-from Bio.SeqIO import parse, write
+'''meta-tools for large FASTA files'''
 import random
 import itertools
 import os.path
+from Bio.SeqIO import parse, write
 
 def count(foo):
     '''takes a file named foo returns the number lines'''
@@ -13,7 +12,7 @@ def count(foo):
         n += 1
     return n
     
-def random(foo,n):
+def random(foo, n):
     '''takes a file foo and returns n random sequences from it'''
     max_n = count(foo)
     record_numbers = itertools.repeat(random.randint(1,max_n),times=n)
@@ -27,44 +26,42 @@ def random(foo,n):
 
 def reader(foo):
     '''
+    generator yielding Bio.Seq.Seq objects from a FASTA file
     '''
-    list_of_seqs = [record.seq for record in parse(open(foo),'fasta')]
-    return list_of_seqs
+    for record in parse(open(foo, 'rU'), 'fasta'):
+        yield record.seq
 
-def writer(foo, L):
+def writer(foo, iterable):
     '''
-    write to FASTA file foo the list of SeqRecord objects L.
+    writes SeqRecord objects from iterable to FASTA file foo.
     Warning: overwrites foo, does not append
     '''
-    write(L, open(foo, 'w'), 'fasta')
+    write(iterable, open(foo, 'w'), 'fasta')
 
-def random_files(foo,n,R):
+def random_files(foo, n, R):
     '''
     takes a FASTA file foo and creates (in the current directory) R random
     files each containing n random sequences from foo, named foo_random[0-R].fa
     '''
     for filenumber in R:
         prefix = foo.split(os.path.sep)[-1]
-        boo = prefix + '_random' + pad(filenumber,R) + '.fa'
+        boo = prefix + '_random' + pad(filenumber, R) + '.fa'
         writer(boo,random(foo,n))
 
-def pad(x,y):
-    '''takes two integers x and y, and returns str(x) with enough 0s to match the length of str(y)'''
-    strX = str(x)
-    strY = str(y)
-    return strX.zfill(len(strY))
+def pad(x, y):
+    '''
+    takes two integers x and y, and returns str(x) with enough 0s to match
+    the length of str(y)
+    '''
+    return str(x).zfill(len(str(y)))
 
-def truncate_lines(f,n):
+def truncate_lines(f, n):
     '''
-    truncate_lines(f,n) truncates lines in a file to at most n letters.
-    See also truncate_seqs
+    truncate_lines(f,n) truncates lines in a file to at most n characters
+    See truncate_seqs to truncate sequences instead of lines
     '''
-    seqs = open(f,'r')
-    # USE FILENAME CORRECTION SCHEME
-    tseqs = open(f + '.' + str(n),'w')
-    for seq in seqs: tseqs.writeline(seq[0:n]+os.linesep)
-    seqs.close()
-    tseqs.close()
+    with open(f,'r') as seqs, open('{!s}.{!s}'.format(f, n), 'w') as tseqs:
+        tseqs.writelines((seq[0:n]+'\n' for seq in seqs))
 
 def truncate_seqs(f, n):
     '''
@@ -74,4 +71,4 @@ def truncate_seqs(f, n):
     seq_recs = parse(open(f,'rU'),'fasta')
     # USE FILENAME CORRECTION SCHEME
     foo = f+str(n)+'.fa'
-    writer(foo, [rec[0:n] for rec in seq_recs])
+    writer(foo, (rec[0:n] for rec in seq_recs))

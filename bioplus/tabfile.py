@@ -6,9 +6,10 @@ import gzip
 import bz2
 
 def merge_files(left, right, output, comments='left'):
-    '''mergeFiles merges the tab-delimited files named left and right,
-       which may have commmented lines. the output is directed to the
-       file named output.
+    '''
+    merge_files merges the tab-delimited files named left and right,
+    which may have commmented lines. the output is directed to the
+    file named output.
 
     There are few modes. If comments='left', comments in left are preserved.
     If comments='right', comments in right are preserved. If comments='none', 
@@ -16,13 +17,13 @@ def merge_files(left, right, output, comments='left'):
     are appended to the beginning of output, although they may previously have
     been contained within the data in left or right.
 
-    Use mergeTabFiles if you need to pass custom parameters to TabFile.
+    Use merge_tab_files if you need to pass custom parameters to TabFile.
     '''
     file1 = TabFile(left)
     file2 = TabFile(right)
     return merge_tab_files(file1, file2, output, comments)
 
-def merge_tab_files(file1, file2, output, comments='left'):
+def merge_tab_files(file1, file2, output_filename, comments='left'):
     '''merge_tab_files merges the tab-delimited files represented by TabFile
        objects left and right, which may have commmented lines. the output is
        directed to the file named output.
@@ -37,11 +38,11 @@ def merge_tab_files(file1, file2, output, comments='left'):
     See also merge_files
     '''
     if comments == 'all':
-        file1.process_table2 (output, lambda x: x + file2.read_row())
+        file1.process_table(file1, lambda x: x + file2.read_row())
     elif comments == 'right':
-        file2.process_table2 (output, lambda x: x + file1.read_row())
+        file2.process_table(file2, lambda x: x + file1.read_row())
     elif comments == 'none':
-        outfile = TabFile(output, write=True)
+        outfile = TabFile(output_filename, write=True)
         for x in file1: outfile.write_row(x + file2.read_row())
     elif comments == 'all':
         # write comments first
@@ -91,8 +92,8 @@ class TabFile(object):
                  compression=None, comments=[], column_names=False):
         self._filename = filename
         self._file_extension = os.path.splitext(filename)[1].lstrip(os.extsep)
-        self._mode = mode
-        self.open(filename, mode)
+        self.mode = mode
+        self.open(mode)
         self._previous_line = 0
         # _detect_comments sets _comment_line_numbers,
         #                       _comment_line_contents
@@ -107,6 +108,8 @@ class TabFile(object):
         return self._previous_line
 
     def _detect_comments(self, comments, column_names=False):
+        self.close()
+        self.open()
         if not os.path.isfile(self._filename):
             self._column_names = None
             self._comment_line_numbers = []
@@ -150,6 +153,8 @@ class TabFile(object):
 
         self._comment_line_numbers = comment_line_numbers
         self._comment_line_contents = comment_line_contents
+        self.close()
+        self.open()
 
     def _parse_line(self, input_string, convert_spaces=True):
         '''
@@ -320,11 +325,9 @@ re-open to read all rows of the column')
         if self._file_pointer is None:
             raise IOError('File not open for writing.')
         elif not override:
-            raise UserWarning(
-"""File already opened and must be closed and re-opened to write the table.
-You may override this behavior by passing override=True to the method')
-"""
-                              )
+            raise UserWarning("File already opened and must be closed and \
+re-opened to write the table. You may override this behavior by passing \
+override=True to the method')")
         try:
             # write column_names if applicable
             if column_names and not self._column_names==None:
@@ -335,20 +338,28 @@ You may override this behavior by passing override=True to the method')
         finally:
             self.close()
 
-    def process_table(self,newFile,f,column_names=None):
-        '''process_tables2 writes a new file (name is specified with newFile), which applies a user-defined function f to each row of data in the original file. f should yield a row (i.e. a list, array, or something else finitely iterable).
+    def process_table(self, output_filename, fnc, column_names=None):
+        '''
+        process_tables2 writes a new file (name is specified with new_file), 
+        which applies a user-defined function fnc to each row of data in the 
+        original file. fnc should yield a row (i.e. a list, array, or something 
+        else finitely iterable).
 
-like process_tables, process_tables2 preserves all commented lines and also the line which column names, if applicable. The user may specify new column names using column_names (a list or other finite iterable), or we will use the old column_names, which might not preserve the column labels if columns were inserted in the middle of the table'''
+        process_tables2 preserves all commented lines and also the line which 
+        column names, if applicable. The user may specify new column names 
+        using column_names (a list or other finite iterable), or we will use 
+        the old column_names, which might not preserve the column labels if 
+        columns were inserted in the middle of the table
+        '''
         if self._file_pointer is None: self.open()
-        outputFile = TabFile(newFile)
-        outputFile.open(write=True)
+        output_file = TabFile(output_filename, 'w')
 
         if not column_names == None:
             first_valid_line = True
-            outputFile.set_column_names(column_names)
+            output_file.set_column_names(column_names)
         elif not self._column_names==None:
             first_valid_line = True
-            outputFile.set_column_names(column_names)
+            output_file.set_column_names(column_names)
         else: first_valid_line = False
 
         # treat rawiter as a generator
@@ -360,20 +371,20 @@ like process_tables, process_tables2 preserves all commented lines and also the 
             while True:
                 line = lines.next()
                 if self.previous_line() in self.comment_line_numbers():
-                    outputFile.write( line )
+                    output_file.write(line)
                 else:
                     first_valid_line = False
-                    outputFile.write_row( column_names )
+                    output_file.write_row(column_names)
                     break
 
         # proceed with the remainder
         while True:
             line = lines.next()
             if self.previous_line() in self.comment_line_numbers():
-                outputFile.write( line )
+                output_file.write(line)
             else:
-                outputFile.write_row( f( self._parse_line(line) ) )
-        outputFile.close()
+                output_file.write_row(fnc(self._parse_line(line)))
+        output_file.close()
 
     def get_column_names(self):
         '''returns the column names'''

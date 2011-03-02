@@ -16,15 +16,12 @@ Optional flags:
                             Default: Assume only one motif.
 """
 import os
+import re
 import scripter
-from scripter import Usage, print_debug, extend_buffer, InvalidFileException
-import Bio
 import Bio.Motif
-import bioplus
-from bioplus.sitefinder import find_sites
-try:
-    import MOODS
-except ImportError:
+from bioplus.sitefinder import find_sites, USE_MOODS
+from scripter import Usage, print_debug, InvalidFileException
+if not USE_MOODS:
     print_debug('WARNING: MOODS is not installed. You may obtain it from '
                 'http://www.cs.helsinki.fi/group/pssmfind/')
 VERSION = "2.4"
@@ -36,7 +33,7 @@ def main():
     e.parse_boolean_opts(boolean_opts)
     all_opts = check_script_options(e.get_options(), debug=e.is_debug())
     e.update_script_kwargs(all_opts)
-    e.set_source_dir('peaks.FASTA')
+    e.set_source_dir('peaks_151bp.FASTA')
     e.set_target_dir('sites.analysis')
     e.set_filename_parser(FilenameParser)
     e.do_action(action)
@@ -55,27 +52,25 @@ def check_script_options(options, debug=False):
             motif_type = options['motif-type']
         else:
             motif_type = "MEME"
+        sopts["motif_file"] = motif_file
+        try:
+            motifs = Bio.Motif.parse(open(motif_file), motif_type)
+        except ValueError:
+            raise Usage(motif_file, "does not contain a valid motif")
         if options.has_key("motif_number"):
             motif_number = options["motif_number"]
-            try:
-                motifs = Bio.Motif.parse(open(motif_file), motif_type)
-            except ValueError:
-                raise Usage(motif_file, "does not contain a valid motif")
-            for i in range(1, motif_number):
+        else:
+            motif_number = 1
+            for i in range(motif_number):
                 try:
                     motif = motifs.next()
                 except StopIteration:
                     raise Usage(motif_file, "only contains", str(i), "motifs")
-        else:
-            try:
-                motif = Bio.Motif.read(open(motif_file), motif_type)
-            except ValueError:
-                raise Usage(motif_file, "does not contain a valid motif")
         sopts['motif'] = motif
    
-    if sopts['bed'] and sopts['xls']:
+    if options.has_key('bed') and options.has_key('xls'):
         raise Usage("can only specify one of --bed, --xls")
-    elif not sopts['bed'] and not sopts['xls']:
+    elif not options.has_key('bed') and not options.has_key('xls'):
         sopts['bed'] = True
 
     return sopts
@@ -94,12 +89,15 @@ def action(parsed_filename, motif, bed=True, xls=False,
 
 class FilenameParser(scripter.FilenameParser):
     def __init__(self, filename, include_width_in_name=False,
-                 debug=False, *args, **kwargs):
-        fext = os.path.splitext(filename)[0].lstrip(os.extsep)
+                 debug=False, target_dir=None, motif_file='unknown_motif',
+                 *args, **kwargs):
+        fext = os.path.splitext(filename)[1].lstrip(os.extsep)
         if not (fext == 'bed' or fext == 'xls'): raise InvalidFileException
+        motif_name = re.sub('\W', '_', os.path.abspath(motif_file))
+        target_dir = target_dir + os.sep + motif_name
         super(FilenameParser, self).__init__(filename, debug=debug,
+                                             target_dir = target_dir,
                                              *args, **kwargs)
-        if self.is_dummy_file: return
         self.fasta_file = None
         for file_extension in ['fa', 'fasta', 'FA', 'FASTA']:
             fasta_file = os.path.join(self.input_dir,
