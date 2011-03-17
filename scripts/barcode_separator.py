@@ -9,10 +9,8 @@ Separates FASTQ files by barcodes
                          handled the barcoding)
 '''
 import os
-import operator
 import scripter
 from scripter import print_debug, assert_path, InvalidFileException
-import Bio.SeqIO.QualityIO
 from Bio.SeqIO.QualityIO import FastqGeneralIterator
 VERSION = "2.4"
 DEFAULT_BARCODES = ['TCAT', 'GACG', 'AGTC', 'CTGA']
@@ -74,15 +72,12 @@ def match_barcode(current_barcode, allowed_barcodes, mismatches=1):
                 accepted.append(barcode)
                 break
             if not barcode[i] == current_barcode[i]: m+=1
-#        score = sum(map(operator.eq, current_barcode, barcode))
-#        if not score + mismatches < barcode_length:
-#            accepted.append(barcode)
         if len(accepted) == 1: return accepted[0]
     else: return ''
 
 # read write four lines at a time #
 def split_file(parsed_filename, barcodes=DEFAULT_BARCODES,
-               strip_length = 1, **kwargs):
+               strip_length = 1, verbose=False, **kwargs):
     f = open(parsed_filename.input_file, "rU")
     record_generator = FastqGeneralIterator(f)
     if parsed_filename.paired_end:
@@ -180,7 +175,7 @@ def split_file(parsed_filename, barcodes=DEFAULT_BARCODES,
     
     if verbose:
         return 'Split {!s} as {!s}'.format(parsed_filename.input_file,
-                                           join(filenames))
+                                           ', '.join(filenames))
     else: return
 
 def _complement(nucleotide):

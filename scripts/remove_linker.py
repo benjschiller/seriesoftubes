@@ -9,7 +9,6 @@ Removes 3' linkers from FASTQ files
 '''
 import os
 import Bio.SeqIO.QualityIO
-import io
 import scripter
 from scripter import print_debug, assert_path, exit_on_Usage
 
@@ -47,7 +46,6 @@ def require_linker(environment):
     return
 
 def action(parsed_filename, linker='', verbose=False, **kwargs):
-    stdout_buffer = ''
 
     if linker == '': raise scripter.Usage('no linker provided')
     f = open(parsed_filename.input_file, "r")
@@ -120,7 +118,7 @@ class BarcodeFilenameParser(scripter.FilenameParser):
             else:
                 if verbose: print_debug('Failed to find paired end')
                 self.paired_end = False
-        else: self.paired_end = Falsee
+        else: self.paired_end = False
 
         self.output_filename = os.path.join(self.output_dir,
                             os.extsep.join([self.protoname,

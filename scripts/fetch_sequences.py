@@ -214,7 +214,7 @@ def get_sequences(parsed_filename, from_MACS_subpeaks=True, from_MACS_xls=False,
     valid_chroms = chrom_lengths.keys()
 
     if bed: bed_file = open(bed_filename, 'w')
-    if debug: print_debug("Now converting") 
+    if debug: print_debug("Now converting {!s}".format(bed_filename)) 
     # if we're going to sort, we'll have to hold the list in memory
     num_peaks = 0
     bed_template = "{!s}\t{!s}\t{!s}\tpeak{!s}\t{!s}\t+\n"
@@ -235,7 +235,7 @@ def get_sequences(parsed_filename, from_MACS_subpeaks=True, from_MACS_xls=False,
         num_peaks += 1
         start = max(int(start), 0)
         end = end # don't need to truncate end, twobitreader does that
-        name = "peak_{!s}".format(num_peaks)
+        name = "peak_{!s}_{!s}_{!s}_{!s}".format(num_peaks, chrom, start, end)
         sitem = (chrom, start, end, name, sort_item(words))
         if sort:
             seq_list.append(sitem)
@@ -244,11 +244,9 @@ def get_sequences(parsed_filename, from_MACS_subpeaks=True, from_MACS_xls=False,
             write_to_fasta(output_handle, sequence, name=name)
             if bed:
                 bed_file.write(bed_template.format(*sitem))
-        if debug:
-            if num_peaks%1000 == 0: print_debug(str(num_peaks))
 
     if sort:
-        if debug: print_debug("Sorting")
+        if debug: print_debug("Sorting {!s} peaks".format(num_peaks))
         sorted_list = sorted(seq_list, key=operator.itemgetter(4), reverse=True)
         if npeaks is None or num_peaks < npeaks:
             npeaks = num_peaks
