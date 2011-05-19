@@ -7,6 +7,21 @@ import struct
 import sys
 from itertools import chain, islice, imap, izip
 
+def true_long_type():
+    """
+    OS X uses an 8-byte long, so make sure this long is the right size
+    and switch to Int if needed
+    """
+    long_size = ctypes.sizeof(ctypes.c_long)
+    if long_size == 4:
+        return 'L'
+    elif long_size == 8:
+        if ctypes.sizeof(ctypes.c_int)==4: return 'I'
+    raise ImportError("Couldn't find a valid 4-byte long type equivalent to LONG")
+         
+
+LONG = true_long_type()
+
 def byte_to_bases(x):
     c = (x >> 4) & 0xf
     f = x & 0xf
@@ -125,28 +140,34 @@ See TwoBitSequence for more info
         #
         # load header
         #
-        try: raw_header = file_handle.read(16)
+#        try: raw_header = file_handle.read(16)
+#        except IOError: raise TwoBitReadError('Premature file end')
+        header = array.array(LONG)
+        try: header.fromfile(file_handle, 4)
         except IOError: raise TwoBitReadError('Premature file end')
         # check signature -- must be 0x1A412743
         # if not, swap bytes
         byteswapped = False
-        endianess = '='
-        (signature, version, sequence_count, reserved) = struct.unpack("=IIII", raw_header)
+#        endianess = '='
+#        (signature, version, sequence_count, reserved) = struct.unpack("=IIII", raw_header)
+        (signature, version, sequence_count, reserved) = header
         if not signature == 0x1A412743:
             byteswapped = True
-            if sys.byteorder=='little': endianess = '>'
-            else: endianess = '<'
-            swapped_header = array.array('L', [signature, version,
-                                               sequence_count, reserved])
-            swapped_header.byteswap()
-            (signature, version, sequence_count, reserved) = swapped_header
+#            if sys.byteorder=='little': endianess = '>'
+#            else: endianess = '<'
+#            swapped_header = array.array(LONG, [signature, version,
+#                                               sequence_count, reserved])
+#            swapped_header.byteswap()
+            header.byteswap()
+#            (signature, version, sequence_count, reserved) = swapped_header
+            (signature, version, sequence_count, reserved) = header
             if not signature == 0x1A412743:
                 raise TwoBitReadError('Invalid 2-bit file signature in header')
         if not version == 0: 
             raise TwoBitReadError('Invalid 2-bit file version in header')
         if not reserved == 0: 
             raise TwoBitReadError('Invalid 2-bit file reserved header field')
-        self._endianess = endianess
+#        self._endianess = endianess
         self._byteswapped = byteswapped
         self._sequence_count = sequence_count
         
@@ -155,21 +176,34 @@ See TwoBitSequence for more info
         # load index
         #
         file_handle = self._file_handle
-        endianess = self._endianess
+#        endianess = self._endianess
+        byteswapped = self._byteswapped
         remaining = self._sequence_count
         sequence_offsets = []
         file_handle.seek(16)
         while True:
             if remaining == 0: break
-            try: raw_name_size = file_handle.read(1)
+            name_size = array.array('B')
+            try: name_size.fromfile(file_handle, 1)
             except IOError: raise TwoBitReadError('Premature file end')
-            name_size = struct.unpack(endianess + "B", raw_name_size)[0]
-            try: raw_index = file_handle.read(name_size + 4)
+            if byteswapped: name_size.byteswap()
+            name = array.array('c')
+            if byteswapped: name.byteswap()
+            try: name.fromfile(file_handle, name_size[0])
             except IOError: raise TwoBitReadError('Premature file end')
+#            try: raw_index = name.fromfile(file_handle, name_size[0])
+#            except IOError: raise TwoBitReadError('Premature file end')
+            offset = array.array(LONG)
+            try: offset.fromfile(file_handle, 1)
+            except IOError: raise TwoBitReadError('Premature file end')
+            if byteswapped: offset.byteswap()
+            sequence_offsets.append((name.tostring(), offset[0]))
+#            try: raw_index = file_handle.read(name_size + 4)
+#            except IOError: raise TwoBitReadError('Premature file end')
             # index is (name, offset)
-            index = struct.unpack(endianess + 'c'*name_size + 'L', raw_index)
-            sequence_offset = (''.join(index[0:-1]), index[-1])
-            sequence_offsets.append(sequence_offset)
+#            index = struct.unpack(endianess + 'c'*name_size + LONG, raw_index)
+#            sequence_offset = (''.join(index[0:-1]), index[-1])
+#            sequence_offsets.append(sequence_offset)
             remaining -= 1
         self._sequence_offsets = sequence_offsets
         self._offset_dict = dict(sequence_offsets)
@@ -223,7 +257,7 @@ for k,v in d.iteritems(): d[k] = str(v)
 #        else: endianess = '='
 #        self._endianess = endianess
         file_handle.seek(offset)
-        header = array.array('L')
+        header = array.array(LONG)
         header.fromfile(file_handle, 2)
         if byteswapped: header.byteswap()
         dna_size, n_block_count = header
@@ -232,8 +266,8 @@ for k,v in d.iteritems(): d[k] = str(v)
         self._dna_size = dna_size
         self._packed_dna_size = (dna_size + 15) / 16 # this is 32-bit fragments
 #        raw_n_info = file_handle.read(8*n_block_count)
-        n_block_starts = array.array('L')
-        n_block_sizes = array.array('L')
+        n_block_starts = array.array(LONG)
+        n_block_sizes = array.array(LONG)
         n_block_starts.fromfile(file_handle, n_block_count)
         if byteswapped: n_block_starts.byteswap()
         n_block_sizes.fromfile(file_handle, n_block_count)
@@ -241,18 +275,18 @@ for k,v in d.iteritems(): d[k] = str(v)
 #        n_info = struct.unpack(endianess + 'LL'*n_block_count, raw_n_info)
         self._n_block_starts = n_block_starts
         self._n_block_sizes= n_block_sizes
-        mask_rawc = array.array('L')
+        mask_rawc = array.array(LONG)
         mask_rawc.fromfile(file_handle, 1)
         if byteswapped: mask_rawc.byteswap()
         mask_block_count = mask_rawc[0]
-#        mask_block_count = struct.unpack(endianess + 'L',
+#        mask_block_count = struct.unpack(endianess + LONG,
 #                                         file_handle.read(4))[0]
-        mask_block_starts = array.array('L')
-        if byteswapped: mask_block_starts.byteswap()
+        mask_block_starts = array.array(LONG)
         mask_block_starts.fromfile(file_handle, mask_block_count)
-        mask_block_sizes = array.array('L')
-        if byteswapped: mask_block_sizes.byteswap()
+        if byteswapped: mask_block_starts.byteswap()
+        mask_block_sizes = array.array(LONG)
         mask_block_sizes.fromfile(file_handle, mask_block_count)
+        if byteswapped: mask_block_sizes.byteswap()
         self._mask_block_starts = mask_block_starts
         self._mask_block_sizes = mask_block_sizes
         file_handle.read(4)
@@ -305,7 +339,6 @@ for k,v in d.iteritems(): d[k] = str(v)
         
         # jump directly to desired file location
         local_offset = offset + first_block * 4
-#        print 'offset, local is {!s} {!s}'.format(offset, local_offset)
         file_handle.seek(local_offset)
         
         # note we won't actually read the last base
@@ -313,7 +346,7 @@ for k,v in d.iteritems(): d[k] = str(v)
         first_base_offset = min % 16
         last_base_offset = max % 16
         
-        fourbyte_dna = array.array('L')
+        fourbyte_dna = array.array(LONG)
         fourbyte_dna.fromfile(file_handle, blocks_to_read)
         if byteswapped: fourbyte_dna.byteswap()
         string_as_array = longs_to_char_array(fourbyte_dna, first_base_offset,

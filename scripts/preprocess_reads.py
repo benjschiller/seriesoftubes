@@ -14,7 +14,7 @@ We can
     - after removing adaptors/barcodes (library bias)
 + Removing trailing Ns from sequences
 + Discard sequences that are less than 4 nucleotides in length
-- Produce FASTQ sequence files ready for immediate alignment
++ Produce FASTQ sequence files ready for immediate alignment
 
 Command-line flags
 NOT IMPLEMENTED YET:
@@ -22,13 +22,16 @@ NOT IMPLEMENTED YET:
 --save-config=foo       Save configuration for this run to file foo 
 IMPLEMENTED:
 --barcodes=SEQ1,SEQ2    (default: TCAT,GACG,AGTC,CTGA)
+--linker=               Specify a 3' adaptor/linker sequence that we should
+                        clip off of each read
 --no-target,--same-dir  keep new files in the same directory as the input files
 --strip-before-barcode=n strip n bases after the barcode is removed (5' end)
-                        (by default this 1 now, and is ignored if GERALD
+                        (by default this 0 now, and is ignored if GERALD
                          handled the barcoding)
 --strip-after-barcode=n strip n bases after the barcode is removed (5' end)
                         (by default this 1 now, and is ignored if GERALD
                          handled the barcoding)
+--max-length=n          truncate final sequences to n bases (default: ignore)
 
 *it expects that files are named s_?_sequence.* (single-end reads) or
                                  s_?_[12]_sequence.* (paired-end reads)
@@ -44,7 +47,7 @@ DEFAULT_BARCODES = ['TCAT', 'GACG', 'AGTC', 'CTGA']
 
 def main():
     boolean_opts = ["no-target", "same-dir"]
-    long_opts = ["barcodes=", "strip-after-barcode=", "linker=",
+    long_opts = ["barcodes=", "strip-after-barcode=", "linker=", "--no-barcodes"
                  "strip-before-barcode="] + boolean_opts
     e = scripter.Environment(long_opts=long_opts, version=VERSION, doc=__doc__)
     e.set_target_dir(os.curdir)
@@ -62,10 +65,17 @@ def check_script_options(options):
         if not linker.isalpha() and len(linker)>0:
             raise scripter.Usage('invalid linker')
     sopts['linker'] = linker
+    
+    # default to DEFAULT_BARCODES if none specified
     if options.has_key('barcodes'):
-        sopts['barcodes'] = options['barcodes'].split(',')
-    else: # default to TCAT,GACG
-        sopts['barcodes'] = DEFAULT_BARCODES
+        barcodes_user = options['barcodes']
+        if barcodes_user.strip()=='': barcodes = None
+        else: barcodes = barcodes_user.split(',')
+    else:
+        if options.has_key('no-barcodes'): barcodes = None
+        else:
+            barcodes = DEFAULT_BARCODES
+    sopts['barcodes'] = barcodes
 
     if options.has_key('strip-after-barcode'):
         sopts['strip_after_barcode'] = options['strip-after-barcode']
@@ -74,8 +84,11 @@ def check_script_options(options):
         
     if options.has_key('strip-before-barcode'):
         sopts['strip_before-barcode'] = options['strip-before-barcode']
-    else: # default to TCAT,GACG
+    else:
         sopts['strip_before_barcode'] = 0
+        
+    if options.has_key('max-length'):
+        sopts['max_length'] = int(options['max-length'])
         
     if options.has_key('same-dir') or options.has_key('no-target'):
         sopts['no_target'] = True
@@ -154,6 +167,15 @@ def trim_record_5prime(record, trim_length=0):
     barcode, (title, seq, qual) = record
     return (barcode, (title, seq[trim_length:], qual[trim_length:]))
     
+def truncate_record(record, max_length=0):
+    '''
+    truncate a record so that it is at most max_length
+    starting at the 5' end 
+    expects (barcode, (title, seq, qual))
+    '''
+    barcode, (title, seq, qual) = record
+    return (barcode, (title, seq[0:max_length], qual[0:max_length]))
+
 def trim_record_3prime(record, trim_length=0):
     '''
     trim a record from the 3' end
@@ -179,6 +201,7 @@ def splitter(pf, **kwargs):
 
 def split_file(parsed_filename,
                barcodes=DEFAULT_BARCODES, linker=None, min_length=4,
+               max_length=None,
                verbose=False, **kwargs):
     f = open(parsed_filename.input_file, "rU")
     records = FastqGeneralIterator(f)
@@ -186,22 +209,33 @@ def split_file(parsed_filename,
     barcoded_files = {}
     filenames = []
     output_filename = parsed_filename.output_filename
-    for barcode in barcodes:
-        fname = output_filename(barcode)
-        filenames.append(fname)
-        barcoded_files[barcode] = open(fname, 'w')
+    if barcodes is not None:
+        processed_file = None
+        for barcode in barcodes:
+            fname = output_filename(barcode)
+            filenames.append(fname)
+            barcoded_files[barcode] = open(fname, 'w')
         
-    # and make a unmatched file
-    unmatched_filename = output_filename("unmatched")
-    filenames.append(unmatched_filename)
-    unmatched_file = open(unmatched_filename, 'w')
-    
+        # and make a unmatched file
+        unmatched_filename = output_filename("unmatched")
+        filenames.append(unmatched_filename)
+        unmatched_file = open(unmatched_filename, 'w')
+    else:
+        barcoded_files = None
+        unmatched_file = None
+        processed_filename = output_filename("processed")
+        filenames.append(processed_filename)
+        processed_file = open(processed_filename, 'w')
+
     # assigned_records is a list of (barcode, record) items
     writer = partial(write_record, barcoded_files=barcoded_files,
-                     unmatched_file=unmatched_file, linker=linker,
-                     min_length=min_length)
+                     unmatched_file=unmatched_file,
+                     processed_file=processed_file,
+                     linker=linker, min_length=min_length)
     final_records = apply_plan(records, barcodes=barcodes, linker=linker,
+                               max_length=max_length,
                                **kwargs)
+        
     results = map(writer, final_records)
     linker_only = results.count('linker')
     too_short = results.count('short')
@@ -209,16 +243,18 @@ def split_file(parsed_filename,
     
     # close and exit #
     f.close()
-    for f_ in barcoded_files.values(): f_.close()
-    unmatched_file.close()
+    if barcoded_files is not None:
+        for f_ in barcoded_files.values(): f_.close()
+    if unmatched_file is not None: unmatched_file.close()
+    if processed_file is not None: processed_file.close()
     
     if verbose:
-        stdout_buffer = 'Split {!s} as {!s}'.format(parsed_filename.input_file,
+        stdout_buffer = 'Split {0!s} as {1!s}'.format(parsed_filename.input_file,
                                            ', '.join(filenames))
         stdout_buffer += '\n'.join([parsed_filename.output_filename,
-                    'Processed {!s} records'.format(record_count),
-                    '{!s} linker only dimers'.format(linker_only),
-                    '{!s} sequences too short (1-3 bp)'.format(too_short)])
+                    'Processed {0!s} records'.format(record_count),
+                    '{0!s} linker only dimers'.format(linker_only),
+                    '{0!s} sequences too short (1-3 bp)'.format(too_short)])
         return stdout_buffer
     else: return
     
@@ -256,6 +292,7 @@ def assign_record(record, barcodes=DEFAULT_BARCODES):
     return (assigned_barcode, record)
 
 def write_record(assigned_record, barcoded_files=None, unmatched_file=None,
+                 processed_file=None,
                  linker=None, min_length=4):
     """
     write the assigned_record to the correct barcode file
@@ -266,14 +303,18 @@ def write_record(assigned_record, barcoded_files=None, unmatched_file=None,
     """
     barcode, (title, seq, qual) = assigned_record
     # check if record 1 is valid
-    if len(seq) == 0 and barcode == linker: problem = 'linker'
-    elif len(seq) < min_length: problem = 'short'
-    else: problem = None
+    if len(seq) == 0 and barcode == linker and barcode is not None:
+        problem = 'linker'
+    elif len(seq) < min_length:
+        problem = 'short'
+    else:
+        problem = None
     # produce lines
-    line_fmt = "@{!s}\n{!s}\n+{!s}\n{!s}\n"
-    line = line_fmt.format(title, seq, title, qual)
+    line_fmt = "@{0!s}\n{1!s}\n+{0!s}\n{2!s}\n"
+    line = line_fmt.format(title, seq, qual)
     if problem is None:
-        if barcode is None: unmatched_file.write(line)
+        if barcoded_files is None: processed_file.write(line) 
+        elif barcode is None: unmatched_file.write(line)
         else: barcoded_files[barcode].write(line)
     return problem
         
@@ -301,8 +342,8 @@ def write_record_pair(assigned_record_pair,
     # produce lines
     if problem is not None and problem2 is not None:
         return (problem, problem2)
-    line_fmt = "@{!s}\n{!s}\n+{!s}\n{!s}\n"
-    line1 = line_fmt.format(title, seq, title, qual)
+    line_fmt = "@{0!s}\n{1!s}\n+{0!s}\n{2!s}\n"
+    line1 = line_fmt.format(title, seq, qual)
     line2 = line_fmt.format(title2, seq2, title2, qual2)
     if barcode == barcode2:
         if problem is None and problem2 is None:
@@ -329,10 +370,13 @@ def pair_has_empty_record(record_pair):
     return is_empty_record(record_pair[0]) or is_empty_record(record_pair[1])
         
 def apply_plan(records, barcodes=DEFAULT_BARCODES,
-               min_length=4,
+               min_length=4, max_length=None,
                strip_after_barcode = 1, strip_before_barcode=0,
                **kwargs):
-    assigner = partial(assign_record, barcodes=barcodes)
+    if barcodes is None:
+        assigner = partial(lambda r: (None, r), barcodes=barcodes)
+    else:
+        assigner = partial(assign_record, barcodes=barcodes)
     if strip_before_barcode > 0:
         pretrimmer = partial(pretrim_record_5prime,
                           trim_length=strip_before_barcode)
@@ -344,10 +388,13 @@ def apply_plan(records, barcodes=DEFAULT_BARCODES,
         trimmer = partial(trim_record_5prime, trim_length=strip_after_barcode)
         trimmed_records = imap(trimmer, assigned_records)
         further_trimmed_records = imap(trim_trailing_Ns, trimmed_records)
-        return further_trimmed_records
     else:
         further_trimmed_records = imap(trim_trailing_Ns, assigned_records)
-        return further_trimmed_records
+    if max_length is not None:
+        truncator = partial(truncate_record, max_length=max_length)
+        neat_records = imap(truncator, further_trimmed_records)
+    return neat_records
+        
 
 def split_paired_files(parsed_filename,
                        barcodes=DEFAULT_BARCODES, linker=None,
@@ -407,13 +454,13 @@ def split_paired_files(parsed_filename,
     mismatched_files[1].close()
     
     if verbose:
-        stdout_buffer = 'Split {!s}, {!s} as {!s}'.format(parsed_filename.input_file,
+        stdout_buffer = 'Split {0!s}, {1!s} as {2!s}'.format(parsed_filename.input_file,
                                                 parsed_filename.second_file,
                                            ', '.join(filenames))
         stdout_buffer += '\n'.join([parsed_filename.output_filename,
-                            'Processed {!s} records'.format(record_count),
-                            '{!s} linker only dimers'.format(linker_only),
-                            '{!s} sequences too short (1-3 bp)'.format(too_short)])
+                            'Processed {0!s} records'.format(record_count),
+                            '{0!s} linker only dimers'.format(linker_only),
+                            '{0!s} sequences too short (1-3 bp)'.format(too_short)])
         return stdout_buffer
     else: return
 

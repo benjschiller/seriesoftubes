@@ -36,7 +36,7 @@ def main():
     if e.is_debug(): print_debug('Found MACS at', path_to_macs)
     path_to_R = path_to_executable(["R64", "R"])
     if e.is_debug(): print_debug('Found R at', path_to_R)
-    e.set_source_dir('alignments.BAM')
+    e.set_source_dir('aligned.BAM')
     e.set_target_dir('fromBAM.macs')
     e.update_script_kwargs(check_script_options(e.get_options()))
     e.update_script_kwargs({'path_to_R': path_to_R,
@@ -142,11 +142,11 @@ def run_macs(parsed_filename, debug=False, silent=False,
                            cwd=_prepend_cwd(parsed_filename.output_dir))
 
     (stdout_data, stderr_data) = job.communicate()
-    stdout_buffer = '{!s}\n\n{!s}'.format(join(step), stdout_data)
+    stdout_buffer = '{0!s}\n\n{1!s}'.format(' '.join(step), stdout_data)
    
     if subpeaks and fix:
         output = fix_subpeaks_file(parsed_filename)
-        if debug: print_debug('{!s}\n{!s}'.format(stdout_buffer, output))
+        if debug: print_debug('{0!s}\n{1!s}'.format(stdout_buffer, output))
 
     # now process R file
     if make_pdf:
@@ -170,7 +170,7 @@ def run_macs(parsed_filename, debug=False, silent=False,
                                    cwd=_prepend_cwd(parsed_filename.output_dir))
             (stdout_data, stderr_data) = job.communicate()
             R_pointer.close()
-            stdout_buffer = '{!s}\n\n{!s}\n{!s}\n'.format(stdout_buffer,
+            stdout_buffer = '{0!s}\n\n{1!s}\n{2!s}\n'.format(stdout_buffer,
                                                           ' '.join(step),
                                                           stdout_data)
 
@@ -185,38 +185,37 @@ def fix_subpeaks_file(parsed_filename, debug=False):
     """
     fn_parts = parsed_filename.protoname.split(os.extsep)
     path_to_subpeaks = os.path.join(parsed_filename.output_dir,
-                        os.extsep.join([fn_parts[0], 'subpeaks'] + \
-                                        fn_parts[1:-1] + [fn_parts[-1] +
-                                                         '_peaks', 'bed']))
+                        os.extsep.join([fn_parts[0] + '_peaks'] + \
+                                        fn_parts[1:] + ['subpeaks', 'bed']))
     new_path_to_subpeaks = os.path.join(parsed_filename.output_dir,
-                            os.extsep.join([fn_parts[0]] + fn_parts[1:-1] + \
-                                           [fn_parts[-1] + '_subpeaks', 'bed']))
+                            os.extsep.join([fn_parts[0]] + fn_parts[1:] +
+                                            ['_subpeaks', 'bed']))
     # check if the file exists
     if os.path.exists(new_path_to_subpeaks):
-        return 'Cannot move {!s} to {!s}. Latter file already exists'.format(
+        return 'Cannot move {0!s} to {1!s}. Latter file already exists'.format(
                                         path_to_subpeaks, new_path_to_subpeaks)
     msg = ' '.join(['Renamed', path_to_subpeaks, 'to', new_path_to_subpeaks])
     try:
         old_file = open(path_to_subpeaks)
-    except OSError:
-        return 'Could not open {!s} for reading'.format(path_to_subpeaks)
+    except EnvironmentError:
+        return 'Could not open {0!s} for reading'.format(path_to_subpeaks)
     try:
         new_file = open(path_to_subpeaks, 'w')
-    except OSError:
-        return 'Could not open {!s} for writing'.format(new_path_to_subpeaks)
+    except EnvironmentError:
+        return 'Could not open {0!s} for writing'.format(new_path_to_subpeaks)
     try:
         discard_first_line = old_file.readline()
         new_file.writelines(old_file.readlines())
-    except OSError:
-        return 'Something went wrong copying {!s} to {!s}'.format(
+    except EnvironmentError:
+        return 'Something went wrong copying {0!s} to {1!s}'.format(
                                         path_to_subpeaks, new_path_to_subpeaks)
         old_file.close()
         new_file.close()
     try:
         os.remove(path_to_subpeaks)
-    except OSError:
-        return 'Copied {!s} to {!s} but could not remove original'.format(path_to_subpeaks,
+    except EnvironmentError:
+        return 'Copied {0!s} to {1!s} but could not remove original'.format(path_to_subpeaks,
                                                                           new_path_to_subpeaks)
-    return 'Moved {!s} to {!s} successfully'
+    return 'Moved {0!s} to {1!s} successfully'
 
 if __name__=="__main__": main()

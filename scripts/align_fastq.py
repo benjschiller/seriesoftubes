@@ -1,13 +1,14 @@
 #!/usr/bin/env python
 """
 align FASTQ files with bowtie, produces BAM files (sorted and indexed)
-Output is two folders
-    all.BAM/        sorted, indexed BAM files with mapped + unmapped reads
-    aligned.BAM/    sorted, indexed BAM files with mapped reads only
+Output is three folders
+    all.BAM/            sorted, indexed BAM files with mapped + unmapped reads
+    aligned.BAM/        sorted, indexed BAM files with mapped reads only
+    unique_tags.BAM/    sorted, indexed BAM files with UNIQUE mapped reads only
 In all/aligned.BAM, there will be a folder for each reference genome
     e.g. all.BAM/ref1 , all.BAM/ref2, aligned.BAM/ref1, aligned.BAM/ref2
-In reference folder, there will be a folder for unique or random
-    alignments (random is maq-like behavior)
+In reference folder, there will be a folder for unique or random alignments
+    (unique means only maps to one spot, random is maq-like behavior)
     e.g. all.BAM/ref1/random, all.BAM/ref1/unique, etc.
 
 --references=ref1,ref2  use reference genomes ref1, ref2
@@ -21,8 +22,9 @@ In reference folder, there will be a folder for unique or random
 --max-quality=          specify maximum quality scores of all mismatched
                         positions (default is 70), ignored in -v mode
 
---no-unique           do not produce unique/ folder 
---no-random           do not produce random/ folder 
+--no-unique-tags      do not produce unique_tags.BAM/ folder
+--no-unique           do not produce unique/ alignment folder 
+--no-random           do not produce random/ alignment folder 
 --no-filtering        do not produce aligned.BAM/ folder
 """
 import os
@@ -38,10 +40,12 @@ from scripter import assert_path, print_debug, path_to_executable, Usage, \
 SOURCE_DIR = 'sequences.FASTQ'
 TARGET_DIR = 'all.BAM'
 FILTERED_DIR = 'aligned.BAM'
+UNIQUE_TAGS_DIR = 'unique_tags.BAM'
 VERSION = "2.4"
 
 def main():
-    long_opts = ["no-random", "no-unique", "no-filtering", "mismatches=",
+    long_opts = ["no-random", "no-unique-tags",
+                 "no-unique", "no-filtering", "mismatches=",
                  "seed-length=", "quals-type=", "references=", "max-quality="]
     e = scripter.Environment(long_opts=long_opts, version=VERSION, doc=__doc__)
     e.set_filename_parser(BowtieFilenameParser)
@@ -73,6 +77,7 @@ def check_script_options(options):
     else: # default to hg18,hg19
         specific_options['references'] = ['hg19', 'hg18']
 
+    specific_options['rmdup'] = not options.has_key('no-unique-tags')
     unique = not options.has_key('no-unique')
     random = not options.has_key('no-random')
     if not unique and not random: raise Usage('Nothing to do')
@@ -151,24 +156,26 @@ def align_once(filename1, filename2, flags, ref, path_to_output,
     else:
         file_args = [ref, filename1, path_to_output]
     bowtie_args = [path_to_bowtie] + flags + file_args
-    run_title = '\n{!s}\n'.format(' '.join(bowtie_args))
+    run_title = '\n{0!s}\n'.format(' '.join(bowtie_args))
     if debug:
         print_debug('Launching botwie as ' + run_title)
         bowtie_job = subprocess.Popen(bowtie_args,
                                       stdout=sys.stdout,
                                       stderr=subprocess.STDOUT)
         bowtie_job.wait()
-        return
+        if bowtie_job.returncode > 0: raise Usage("bowtie could not run properly")
+        else: return
     else:
         bowtie_job = subprocess.Popen(bowtie_args,
                                       stdout=subprocess.PIPE,
                                       stderr=subprocess.PIPE)
         stdout, stderr = bowtie_job.communicate()
-        return '{!s}{!s}{!s}'.format(run_title, stdout, stderr)
+        if bowtie_job.returncode > 0: raise Usage("bowtie could not run properly")
+        else: return '{0!s}{1!s}{2!s}'.format(run_title, stdout, stderr)
 
 @exit_on_Usage
 def produce_bam_files(fp_obj, verbose=False, debug=False,
-                      filtering=True, *args, **kwargs):
+                      filtering=True, rmdup=True, *args, **kwargs):
     stdout_buffer = []
     bam_files = []
     # convert
@@ -191,7 +198,7 @@ def produce_bam_files(fp_obj, verbose=False, debug=False,
         pysam.index(bam_file)
         
         bam_files.append(bam_file)
-        stdout_buffer.append('Converted {!s} to {!s} (sorted and indexed)'.\
+        stdout_buffer.append('Converted {0!s} to {1!s} (sorted and indexed)'.\
                              format(sam_file, bam_file))
     #filter
     if filtering:
@@ -199,14 +206,28 @@ def produce_bam_files(fp_obj, verbose=False, debug=False,
             new_bam_file = re.sub(TARGET_DIR, FILTERED_DIR, bam_file, 1)
             new_bam_dir = os.path.split(new_bam_file)[0]
             if not os.path.exists(new_bam_dir): os.makedirs(new_bam_dir)
-            if debug: print_debug('Copying aligned reads from {!s} to {!s}'.\
+            if debug: print_debug('Copying aligned reads from {0!s} to {1!s}'.\
                                   format(bam_file, new_bam_file))
             pysam.view('-F 0x4', '-b', '-o' + new_bam_file, bam_file)
         if debug: print_debug('Indexing', new_bam_file) 
         pysam.index(new_bam_file)
-        stdout_buffer.append('Filtered aligned reads from {!s} to {!s} \
+        stdout_buffer.append('Filtered aligned reads from {0!s} to {1!s} \
 (sorted and indexed)'.format(bam_file, new_bam_file))
-    
+   
+    if rmdup:  
+        for bam_file in bam_files:
+            new_bam_file = re.sub(TARGET_DIR, FILTERED_DIR, bam_file, 1)
+            unique_bam_file = re.sub(TARGET_DIR, UNIQUE_TAGS_DIR, bam_file, 1)
+            unique_bam_dir = os.path.split(unique_bam_file)[0]
+            if not os.path.exists(unique_bam_dir): os.makedirs(unique_bam_dir)
+            if debug: print_debug('Copying unique reads from {0!s} to {1!s}'.\
+                                  format(new_bam_file, unique_bam_file))
+            pysam.rmdup('-S', new_bam_file, unique_bam_file)
+        if debug: print_debug('Indexing', unique_bam_file) 
+        pysam.index(unique_bam_file)
+        stdout_buffer.append('Copied unique aligned reads from {0!s} to {1!s} \
+(sorted and indexed)'.format(new_bam_file, unique_bam_file))
+
     return '\n'.join(stdout_buffer)
 
 def get_pair_info(illumina_name):
