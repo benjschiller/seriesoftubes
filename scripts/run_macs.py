@@ -2,6 +2,8 @@
 '''
 calls peaks using MACS
 
+--setup=setup.txt   specify file with matched sample/controls
+
 --no-wig            do not generate wiggle files (also disable subpeaks)
 --chrom-wigs        generate a wig file per chromosome instead of a single wig
 --no-diag           disable generation of diagnostic xls file
@@ -10,28 +12,23 @@ calls peaks using MACS
 --no-fix            do not auto-fix subpeaks filename
 --fix-only          only fix subpeaks filename, do nothing else
 '''
+from ConfigParser import ConfigParser
 import sys
 import os
+from errno import ENOENT, EACCES
+from os import access, extsep, strerror, R_OK
+from os.path import exists
 import platform
 import subprocess
-import scripter
-from scripter import path_to_executable, print_debug
-VERSION = "2.4"
+from scripter import Environment, FilenameParser, InvalidFileException, Usage, \
+                     path_to_executable,  print_debug
 
-# HARDCODED CONTROLS #
-CONTROLS = {
-    'A549.GR.1uM.Dex.90m.samantha_cooper.081124_HWI-EAS355_0001_Meghan.s_1': 'A549.Input.1uM.Dex.90m.samantha_cooper.090326_HWI-EAS355_0006_Meghan_040109run.s_8',
-    'Nalm6.GR.1uM.Dex.90m.samantha_cooper.080821_HWI-EAS355_0003_sam_meghan.s_2': 'Nalm6.Input.1uM.Dex.90m.samantha_cooper.080821_HWI-EAS355_0003_sam_meghan.s_1.all',
-    'U2os-GRalpha.GR.1uM.Dex.90m.samantha_cooper.080821_HWI-EAS355_0003_sam_meghan.s_3': 'U2OS-GRalpha.Input.1uM.Dex.90m.samantha_cooper.090326_HWI-EAS355_0006_Meghan_040109run.s_7',
-    'U2os-GRalpha.GR.1uM.Dex.90m.samantha_cooper.081124_HWI-EAS355_0001_Meghan.s_4': 'U2os-GRalpha.GR.0uM.EtOH.90m.samantha_cooper.081124_HWI-EAS355_0001_Meghan.s_2',
-    'U2os-GRgamma.GR.1uM.Dex.90m.samantha_cooper.081124_HWI-EAS355_0001_Meghan.s_3': 'U2os-GRalpha.GR.0uM.EtOH.90m.samantha_cooper.081124_HWI-EAS355_0001_Meghan.s_2.all',
-}
-# HARDCODED CONTROLS #
+VERSION = "2.4"
 
 def main():
     long_opts = ["no-wig", "no-diag", "chrom-wigs", "no-subpeaks",
-                 "no-pdf", "fix-only", "no-fix"]
-    e = scripter.Environment(long_opts=long_opts, doc=__doc__, version=VERSION)
+                 "no-pdf", "fix-only", "no-fix", "setup="]
+    e = Environment(long_opts=long_opts, doc=__doc__, version=VERSION)
     path_to_macs = path_to_executable(["macs14", "macs14.py", "macs"])
     if e.is_debug(): print_debug('Found MACS at', path_to_macs)
     path_to_R = path_to_executable(["R64", "R"])
@@ -41,9 +38,39 @@ def main():
     e.update_script_kwargs(check_script_options(e.get_options()))
     e.update_script_kwargs({'path_to_R': path_to_R,
                             'path_to_macs': path_to_macs})
-    e.set_filename_parser(FilenameParser)
-    e.do_action(run_macs)
+    e.set_filename_parser(MacsFilenameParser)
+    controls = e.get_script_kwargs()['controls']
+    write_setup_file(controls)
+    e.do_action(run_macs, stay_open=True)
+    
+def write_setup_file(controls):
+    setup_file = open(os.path.join('fromBAM.macs', 'setup.txt'), 'w')
+    for sample, value in controls.items():
+        name, control = value
+        if control == None: control = 'None'
+        record = '[%s]\nsample = %s\ncontrol = %s\n' % (name, sample, control)
+        setup_file.write(record)
+    setup_file.close()
 
+def read_setup_file(setup_file):
+        if not exists(setup_file):
+            raise IOError(ENOENT, strerror(ENOENT), setup_file)
+        if not access(setup_file, R_OK):
+            raise IOError(EACCES, strerror(EACCES), setup_file)
+        config_parser = ConfigParser()
+        config_parser.readfp(open(setup_file, 'rU'))
+        controls = {} # {sample: (name, control)}
+        for section in config_parser.sections():
+            name = section
+            sample = config_parser.get(section, 'sample')
+            if config_parser.has_option(section, 'control'):
+                control = config_parser.get(section, 'control')
+                if control.strip() == 'None': control = None
+            else:
+                control = None
+            controls[sample] = (name, control)
+        return controls
+            
 def check_script_options(options):
     specific_options = {}
 
@@ -54,40 +81,44 @@ def check_script_options(options):
     specific_options['make_pdf'] = not options.has_key('no-pdf')
     specific_options['fix_only'] = options.has_key('fix-only')
     specific_options['fix'] = not options.has_key('fix')
+
+    if options.has_key("setup"):
+        specific_options['controls'] = read_setup_file(options['setup'])
     
     if not specific_options['fix'] and specific_options['fix_only']:
-        raise scripter.Usage('Cannot specify both --no-fix and --fix-only')
+        raise Usage('Cannot specify both --no-fix and --fix-only')
 
     return specific_options
 
-class FilenameParser(scripter.FilenameParser):
-    def __init__(self, filename, *args, **kwargs):
+class MacsFilenameParser(FilenameParser):
+    def __init__(self, filename, controls = {}, debug=False, *args, **kwargs):
         if not os.path.splitext(filename)[1] == '.bam':
-            raise scripter.InvalidFileException(filename)
-        super(FilenameParser, self).__init__(filename, *args, **kwargs)
-        self.output_dir = os.path.join(self.output_dir, self.protoname)
-        self.check_output_dir(self.output_dir)
-
-        self.has_control = False
-        name, ext  = os.path.splitext(self.protoname)
-        ext = ext.lstrip(os.extsep)
-
-        if not ext.startswith('barcode') and not ext == 'all':
-            name = self.protoname
-            ext = None
-
-        if CONTROLS.has_key(name) and (ext=='all' or ext is None):
-            self.has_control = True
-            self.is_control = False
-            self.control_file = os.path.join(self.input_dir,
-                                    os.extsep.join([CONTROLS[name],
-                                                    selff.file_extension]))
-        elif name in CONTROLS.values() or self.protoname in CONTROLS.values():
-            self.has_control = False
-            self.is_control = True
+            raise InvalidFileException(filename)
+        super(MacsFilenameParser, self).__init__(filename, *args, **kwargs)
+        
+        sample = self.protoname
+        # check controls
+        if controls.has_key(sample):
+            run_name, control = controls[sample]
+            if debug: print_debug(sample, 'has control', control)
+            if control is None:
+                self.control_file = None
+            else:
+                self.control_file = os.path.join(self.input_dir,
+                                                 control + '.bam')
+        elif sample in [v[1] for v in controls.values()]:
+            if debug: print_debug(sample, 'is a control, aborting')
+            raise InvalidFileException
         else:
-            self.has_control = False
-            self.is_control = False
+            if debug: print_debug(sample, 'has no control indicated, continuing anyway')
+            # not in setup.txt, make an entry in controls
+            self.control_file = None
+            run_name = sample
+            controls[sample] = (sample, None)
+            
+        self.run_name = run_name  
+        self.output_dir = os.path.join(self.output_dir, run_name)
+        self.check_output_dir(self.output_dir)
 
 def _prepend_cwd(d):
     '''prepends the current working directory to a directory d'''
@@ -108,12 +139,12 @@ def run_macs(parsed_filename, debug=False, silent=False,
     if fix_only:
         return fix_subpeaks_filename(parsed_filename)
 
-    if parsed_filename.is_control: return
-
+    input_file = parsed_filename.input_file
+    control_file = parsed_filename.control_file
     if debug:
-        print_debug('Processing', parsed_filename.input_file)
-        if parsed_filename.has_control:
-            print_debug('with control', parsed_filename.control_file)
+        print_debug('Processing', input_file)
+        if control_file is not None:
+            print_debug('with control', control_file)
 
     macs_options = ['--format=BAM']
     if wig:
@@ -121,12 +152,13 @@ def run_macs(parsed_filename, debug=False, silent=False,
         if single_wig: macs_options.append('--single-wig')
         if subpeaks: macs_options.append('--call-subpeaks')
     if diag: macs_options.append('--diag')
-    macs_options.append(_join_opt('--name', parsed_filename.protoname))
+    run_name = '_'.join(parsed_filename.run_name.split())
+    macs_options.append(_join_opt('--name', run_name))
     macs_options.append(_join_opt('--treatment',
-                                  _prepend_cwd(parsed_filename.input_file)))
-    if parsed_filename.has_control:
+                                  _prepend_cwd(input_file)))
+    if parsed_filename.control_file is not None:
         macs_options.append(_join_opt('--control',
-                                _prepend_cwd(parsed_filename.control_file)))
+                                _prepend_cwd(control_file)))
 
     if path_to_macs is None:
         path_to_macs = path_to_executable(["macs14", "macs14.py", "macs"])
@@ -141,11 +173,11 @@ def run_macs(parsed_filename, debug=False, silent=False,
                            stderr=subprocess.STDOUT,
                            cwd=_prepend_cwd(parsed_filename.output_dir))
 
-    (stdout_data, stderr_data) = job.communicate()
+    stdout_data = job.communicate()[0]
     stdout_buffer = '{0!s}\n\n{1!s}'.format(' '.join(step), stdout_data)
    
     if subpeaks and fix:
-        output = fix_subpeaks_file(parsed_filename)
+        output = fix_subpeaks_filename(parsed_filename)
         if debug: print_debug('{0!s}\n{1!s}'.format(stdout_buffer, output))
 
     # now process R file
@@ -168,33 +200,32 @@ def run_macs(parsed_filename, debug=False, silent=False,
                                    stderr=subprocess.STDOUT,
                                    stdin=R_pointer,
                                    cwd=_prepend_cwd(parsed_filename.output_dir))
-            (stdout_data, stderr_data) = job.communicate()
+            stdout_data = job.communicate()[0]
             R_pointer.close()
             stdout_buffer = '{0!s}\n\n{1!s}\n{2!s}\n'.format(stdout_buffer,
-                                                          ' '.join(step),
-                                                          stdout_data)
+                                                             ' '.join(step),
+                                                             stdout_data)
 
     return stdout_buffer
 
-def fix_subpeaks_file(parsed_filename, debug=False):
+def fix_subpeaks_filename(parsed_filename, debug=False):
     """
     there's a few problems with the subpeaks file that we fix here
     
     1) Breaks MACS naming convention, rename it
     2) First line is not compatible with BED format, delete it
     """
-    fn_parts = parsed_filename.protoname.split(os.extsep)
+    fn_parts = parsed_filename.protoname.split(extsep)
     path_to_subpeaks = os.path.join(parsed_filename.output_dir,
-                        os.extsep.join([fn_parts[0] + '_peaks'] + \
+                        extsep.join([fn_parts[0] + '_peaks'] + \
                                         fn_parts[1:] + ['subpeaks', 'bed']))
     new_path_to_subpeaks = os.path.join(parsed_filename.output_dir,
-                            os.extsep.join([fn_parts[0]] + fn_parts[1:] +
+                            extsep.join([fn_parts[0]] + fn_parts[1:] +
                                             ['_subpeaks', 'bed']))
     # check if the file exists
     if os.path.exists(new_path_to_subpeaks):
         return 'Cannot move {0!s} to {1!s}. Latter file already exists'.format(
                                         path_to_subpeaks, new_path_to_subpeaks)
-    msg = ' '.join(['Renamed', path_to_subpeaks, 'to', new_path_to_subpeaks])
     try:
         old_file = open(path_to_subpeaks)
     except EnvironmentError:
@@ -204,7 +235,7 @@ def fix_subpeaks_file(parsed_filename, debug=False):
     except EnvironmentError:
         return 'Could not open {0!s} for writing'.format(new_path_to_subpeaks)
     try:
-        discard_first_line = old_file.readline()
+        old_file.readline()
         new_file.writelines(old_file.readlines())
     except EnvironmentError:
         return 'Something went wrong copying {0!s} to {1!s}'.format(

@@ -66,7 +66,6 @@ def main():
     e.set_target_dir(TARGET_DIR)
     e.do_action(align, stay_open=True)
     e.set_num_cpus(num_cpus)
-    
     e.do_action(produce_bam_files)
 
 @exit_on_Usage
@@ -183,19 +182,27 @@ def produce_bam_files(fp_obj, verbose=False, debug=False,
         name = os.path.splitext(sam_file)[0]
         temp_file = os.extsep.join([name,'tmp'])
         bam_file = os.extsep.join([name,'bam'])
+        # check that sam_file exists
+        assert_path(sam_file)
+        
         if debug: print_debug('Converting', sam_file, 
                               'to temporary BAM file', temp_file)
         pysam.view('-b', '-S', '-o' + temp_file, sam_file)
+        assert_path(temp_file)
         
         if debug: print_debug('Sorting', temp_file, 'into', bam_file)
         pysam.sort(temp_file, name)
-        
+
+        # don't destroy the files until we're sure we succeeded!
+        assert_path(bam_file + '.bam')
         if debug: print_debug('Removing temporary files', sam_file, temp_file)
         os.remove(sam_file)
         os.remove(temp_file)
         
         if debug: print_debug('Indexing', bam_file) 
         pysam.index(bam_file)
+        # Make sure indexing succeeds
+        assert_path(bam_file + '.bam.bai')
         
         bam_files.append(bam_file)
         stdout_buffer.append('Converted {0!s} to {1!s} (sorted and indexed)'.\
@@ -211,6 +218,8 @@ def produce_bam_files(fp_obj, verbose=False, debug=False,
             pysam.view('-F 0x4', '-b', '-o' + new_bam_file, bam_file)
         if debug: print_debug('Indexing', new_bam_file) 
         pysam.index(new_bam_file)
+        assert_path(bam_file + '.bam')
+        assert_path(bam_file + '.bam.bai')
         stdout_buffer.append('Filtered aligned reads from {0!s} to {1!s} \
 (sorted and indexed)'.format(bam_file, new_bam_file))
    
@@ -223,8 +232,10 @@ def produce_bam_files(fp_obj, verbose=False, debug=False,
             if debug: print_debug('Copying unique reads from {0!s} to {1!s}'.\
                                   format(new_bam_file, unique_bam_file))
             pysam.rmdup('-S', new_bam_file, unique_bam_file)
+            assert_path(new_bam_file + '.bam')
         if debug: print_debug('Indexing', unique_bam_file) 
         pysam.index(unique_bam_file)
+        assert_path(new_bam_file + '.bam.bai')
         stdout_buffer.append('Copied unique aligned reads from {0!s} to {1!s} \
 (sorted and indexed)'.format(new_bam_file, unique_bam_file))
 

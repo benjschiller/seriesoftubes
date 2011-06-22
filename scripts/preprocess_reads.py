@@ -127,7 +127,6 @@ def match_barcode(seq, barcodes, mismatches=1):
     barcode_lengths = map(len, barcodes)
     max_barcode_length = max(barcode_lengths)
     if max_barcode_length > len(seq):
-        print 'slow', len(seq)
         # slow implementation
         for barcode in barcodes:
             barcode_length = len(barcode)
@@ -145,10 +144,6 @@ def match_barcode(seq, barcodes, mismatches=1):
                 if accepted is None: accepted = barcode
                 else: return None
         return accepted
-#        matching = lambda x: mismatches > sum(imap(ne, x, seq))
-#        good = map(matching, barcodes)
-#        if good.count(True) == 1: return barcodes[good.index(True)]
-#        else: return None
 
 def pretrim_record_5prime(record, trim_length=0):
     '''
@@ -223,7 +218,7 @@ def split_file(parsed_filename,
     else:
         barcoded_files = None
         unmatched_file = None
-        processed_filename = output_filename("processed")
+        processed_filename = output_filename("processed", is_barcode=False)
         filenames.append(processed_filename)
         processed_file = open(processed_filename, 'w')
 
@@ -544,15 +539,27 @@ class BarcodeFilenameParser(scripter.FilenameParser):
         else: paired_end = False
         self.paired_end = paired_end
 
-    def output_filename(self, barcode):
-        return os.path.join(self.output_dir,
-                            os.extsep.join([self.protoname,
-                                            'barcode_' + barcode,
-                                            self.file_extension]))
-    def output_filename2(self, barcode):
-        return os.path.join(self.output_dir,
-                            os.extsep.join([self.protoname2,
-                                            'barcode_' + barcode,
-                                            self.file_extension]))
+    def output_filename(self, barcode, is_barcode=True):
+        if is_barcode:
+            return os.path.join(self.output_dir,
+                                os.extsep.join([self.protoname,
+                                                'barcode_' + barcode,
+                                                self.file_extension]))
+        else:
+            return os.path.join(self.output_dir,
+                                os.extsep.join([self.protoname,
+                                                barcode,
+                                                self.file_extension]))
+    def output_filename2(self, barcode, is_barcode=True):
+        if is_barcode:
+            return os.path.join(self.output_dir,
+                                os.extsep.join([self.protoname2,
+                                                'barcode_' + barcode,
+                                                self.file_extension]))
+        else:
+            return os.path.join(self.output_dir,
+                                os.extsep.join([self.protoname2,
+                                                barcode,
+                                                self.file_extension]))
 
 if __name__== "__main__": main()

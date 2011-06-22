@@ -13,6 +13,7 @@ Output is two folders
 
 Default options: --source=alignments.SAM
 '''
+raise DeprecationWarning
 import os
 import re
 import pysam

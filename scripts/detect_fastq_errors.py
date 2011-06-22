@@ -4,9 +4,6 @@ Finds and sequences errors (Ns) at each base position in FASTQ files
 
 Default options: --target=errors.FASTQ
 '''
-#import bioplus.positionmatrix
-#from bioplus.positionmatrix import positionMatrix
-import Bio.SeqIO.QualityIO
 from Bio.SeqIO.QualityIO import FastqGeneralIterator
 import os
 import operator
