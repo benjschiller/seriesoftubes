@@ -95,27 +95,6 @@ def check_script_options(options):
 
     return sopts
 
-#class IlluminaID:
-#    def __init__(self, name):
-#        name_parts = name.split(':')
-#
-#        self.instrument = name_parts[0]
-#        self.title = name_parts[1]
-#        self.x = name_parts[2]
-#
-#        last_part = name_parts[-1]
-#        p = last_part.find('#')
-#        s = last_part.find('/')
-#
-#        self.y = last_part[0:p]
-#        self.barcode = last_part[p+1:s]
-#        self.member_of_pair = last_part[s+1:]
-#
-#    def __str__(self):
-#        last_part = ''.join([self.y, '#', self.barcode,
-#                             '/', self.member_of_pair])
-#        return ':'.join([self.instrument, self.title, self.x, last_part])
-
 def match_barcode(seq, barcodes, mismatches=1):
     """
     try to match seq to a list barcodes
@@ -138,6 +117,7 @@ def match_barcode(seq, barcodes, mismatches=1):
                 else: return None
         return accepted
     else:
+        # fast implementation requires this condition
         accepted = None
         for barcode in barcodes:
             if mismatches > sum(imap(ne, barcode, seq)):
@@ -304,57 +284,79 @@ def write_record(assigned_record, barcoded_files=None, unmatched_file=None,
         problem = 'short'
     else:
         problem = None
+        
     # produce lines
     line_fmt = "@{0!s}\n{1!s}\n+{0!s}\n{2!s}\n"
     line = line_fmt.format(title, seq, qual)
-    if problem is None:
-        if barcoded_files is None: processed_file.write(line) 
-        elif barcode is None: unmatched_file.write(line)
-        else: barcoded_files[barcode].write(line)
-    return problem
+    is_processed = barcoded_files is None
+    # abort write if there's a problem with the read
+    if problem is not None:
+        return problem
+    if is_processed: processed_file.write(line) 
+    elif barcode is None: unmatched_file.write(line)
+    else: barcoded_files[barcode].write(line)
         
 def write_record_pair(assigned_record_pair,
-                       barcoded_file_pairs=None,
-                       unmatched_files=None, mismatched_files=None,
-                       linker=None, min_length=4):
+                      barcoded_file_pairs=None,
+                      unmatched_files=None,
+                      processed_files=None,
+                      orphaned_read_files=None,
+                      mismatched_files=None,
+                      linker=None, min_length=4):
     """
     write the assigned_record to the correct barcode file
     an assigned_record is a (barcode, (title, seq, qual)) (all strs)
     
     will not work unless you provide a dictionary of barcoded_file_pairss and
-    unmatched_files and mismatched_files (pairs of file object)
+    unmatched_files and mismatched_files (2-tuples of file object)
     """
     barcode, (title, seq, qual) = assigned_record_pair[0]
-    barcode2, (title2, seq2, qual2) = assigned_record_pair[1]
     # check if record 1 is valid
     if len(seq) == 0 and barcode == linker: problem = 'linker'
     elif len(seq) < min_length: problem = 'short'
     else: problem = None
+    
+    barcode2, (title2, seq2, qual2) = assigned_record_pair[1]
     # check if record 2 is valid
     if len(seq2) == 0 and barcode2 == linker: problem2 = 'linker'
     elif len(seq2) < min_length: problem2 = 'short'
     else: problem2 = None
+
     # produce lines
-    if problem is not None and problem2 is not None:
-        return (problem, problem2)
     line_fmt = "@{0!s}\n{1!s}\n+{0!s}\n{2!s}\n"
-    line1 = line_fmt.format(title, seq, qual)
+    line = line_fmt.format(title, seq, qual)
     line2 = line_fmt.format(title2, seq2, title2, qual2)
-    if barcode == barcode2:
-        if problem is None and problem2 is None:
-            if barcode is None:
-                unmatched_files[0].write(line1)
-                unmatched_files[1].write(line2)
-            else:
-                barcoded_file_pairs[barcode][0].write(line1)
-                barcoded_file_pairs[barcode][1].write(line2)
-        elif problem is None:
-            mismatched_files[0].write(line1)
-        else: #problem2 is None
-            mismatched_files[1].write(line2)
+    
+    is_processed = barcoded_file_pairs is None
+    
+    # abort write if both reads have problems
+    if problem is not None or problem2 is not None:
+    # if only one read has a problem, use write_record instead
+        if problem2 is not None:
+            if is_processed: orphaned_read_files[0].write(line)
+            else: mismatched_files[0].write(line)
+        else:
+            if is_processed: orphaned_read_files[1].write(line2)
+            else: mismatched_files[1].write(line2)
+        return (problem, problem2)
+        
+    # select output files
+    if barcoded_file_pairs is None:
+        output_file = processed_files[0]
+        output_file2 = processed_files[1]
+    elif barcode is None and barcode2 is None:
+        output_file = unmatched_files[0]
+        output_file2 = unmatched_files[1]
+    elif not barcode == barcode2:
+        output_file = mismatched_files[0]
+        output_file2 = mismatched_files[1]
     else:
-        if problem is None: mismatched_files[0].write(line1)
-        if problem2 is None: mismatched_files[1].write(line2)
+        output_file = barcoded_file_pairs[barcode][0]
+        output_file2 = barcoded_file_pairs[barcode][1]
+
+    # write and return
+    output_file.write(line)
+    output_file2.write(line2)
     return (problem, problem2)
         
 def is_empty_record(record):
@@ -404,29 +406,51 @@ def split_paired_files(parsed_filename,
     filenames = []
     output_filename = parsed_filename.output_filename
     output_filename2 = parsed_filename.output_filename2
-    for barcode in barcodes:
-        fname = output_filename(barcode)
-        fname2 = output_filename2(barcode)
-        filenames.extend((fname, fname2))
-        barcoded_file_pairs[barcode] = (open(fname, 'w'), open(fname2, 'w'))
+    if barcodes is not None:
+        processed_files = None
+        orphaned_read_files = None
+        for barcode in barcodes:
+            fname = output_filename(barcode)
+            fname2 = output_filename2(barcode)
+            filenames.extend((fname, fname2))
+            barcoded_file_pairs[barcode] = (open(fname, 'w'), 
+                                            open(fname2, 'w'))
         
-    # and make a unmatched file
-    unmatched_filename = output_filename("unmatched")
-    unmatched_filename2 = output_filename2("unmatched")
-    unmatched_files = (open(unmatched_filename, 'w'),
-                       open(unmatched_filename, 'w'))
-
-    mismatched_filename = output_filename("mismatched")
-    mismatched_filename2 = output_filename2("mismatched")
-    mismatched_files = (open(mismatched_filename, 'w'),
-                        open(mismatched_filename, 'w'))
-    filenames.extend((unmatched_filename, unmatched_filename2,
-                      mismatched_filename, mismatched_filename2))
-
+        # and make a unmatched file
+        unmatched_filename = output_filename("unmatched")
+        unmatched_filename2 = output_filename2("unmatched")
+        unmatched_files = (open(unmatched_filename, 'w'),
+                           open(unmatched_filename2, 'w'))
+    
+        mismatched_filename = output_filename("mismatched")
+        mismatched_filename2 = output_filename2("mismatched")
+        mismatched_files = (open(mismatched_filename, 'w'),
+                            open(mismatched_filename2, 'w'))
+        filenames.extend((unmatched_filename, unmatched_filename2,
+                          mismatched_filename, mismatched_filename2))
+    else:
+        barcoded_file_pairs = None
+        unmatched_files = None
+        mismatched_files = None
+        orphaned_read_filename = output_filename("orphaned",
+                                                 is_barcoded=False)
+        orphaned_read_filename2 = output_filename2("mismatched",
+                                                   is_barcoded=False)
+        orphaned_read_files = (open(orphaned_read_filename, 'w'),
+                               open(orphaned_read_filename2, 'w'))
+        processed_filename = output_filename("processed", is_barcoded=False)
+        processed_filename2 = output_filename2("processed", is_barcoded=False)
+        processed_files = (open(processed_filename, 'w'),
+                           open(processed_filename2, 'w'))
+        filenames.extend((orphaned_read_filename, orphaned_read_filename2),
+                         (processed_filename, processed_filename2))
+        
     writer = partial(write_record_pair,
                      barcoded_file_pairs=barcoded_file_pairs,
                      unmatched_files=unmatched_files,
                      mismatched_files=mismatched_files,
+                     processed_files=processed_files,
+                     orphaned_read_files=orphaned_read_files,
                      linker=linker, min_length=min_length)
     final_records = apply_plan(records, barcodes=barcodes, linker=linker,
                                **kwargs)

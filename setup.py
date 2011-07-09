@@ -28,7 +28,7 @@ def main():
 	      author='Benjamin Schiller',
 	      author_email='benjamin.schiller@ucsf.edu',
           install_requires = ['scripter>=2.0.2', 'biopython>=1.56',
-							  'twobitreader>=1.0.2', 'pysam>=0.4'],
+							  'twobitreader>=1.0.4', 'pysam>=0.4'],
 	      packages = ['bioplus'],
           scripts = [os.path.join('scripts', x) for x in os.listdir('scripts') 
                      if not x.startswith('.')]
