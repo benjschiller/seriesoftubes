@@ -9,22 +9,19 @@ We can
 + Cleave adaptor sequence from the 5' end
     - before barcode
     + after barcode
-? Check for positional bias / reading errors
-    - before removing adaptors/barcodes (sequencer bias)
-    - after removing adaptors/barcodes (library bias)
 + Removing trailing Ns from sequences
 + Discard sequences that are less than 4 nucleotides in length
 + Produce FASTQ sequence files ready for immediate alignment
 
+A configuration file 'preprocess_reads.cfg' is saved in the current
+directory (unless one is provided by the user).
+
 Command-line flags
-NOT IMPLEMENTED YET:
 --config=foo            Use configuration in file foo
---save-config=foo       Save configuration for this run to file foo 
-IMPLEMENTED:
 --barcodes=SEQ1,SEQ2    (default: TCAT,GACG,AGTC,CTGA)
 --linker=               Specify a 3' adaptor/linker sequence that we should
                         clip off of each read
---no-target,--same-dir  keep new files in the same directory as the input files
+--no-target, --same-dir  keep new files in the same directory as the input files
 --strip-before-barcode=n strip n bases after the barcode is removed (5' end)
                         (by default this 0 now, and is ignored if GERALD
                          handled the barcoding)
@@ -42,21 +39,53 @@ from functools import partial
 import scripter
 from scripter import print_debug, assert_path, InvalidFileException
 from Bio.SeqIO.QualityIO import FastqGeneralIterator
+from ConfigParser import SafeConfigParser
+from errno import ENOENT, EACCES
+from os import access, strerror, R_OK
+from os.path import exists
 VERSION = "2.4"
 DEFAULT_BARCODES = ['TCAT', 'GACG', 'AGTC', 'CTGA']
 
 def main():
     boolean_opts = ["no-target", "same-dir"]
-    long_opts = ["barcodes=", "strip-after-barcode=", "linker=", "--no-barcodes"
+    long_opts = ["barcodes=", "strip-after-barcode=", "linker=", "no-barcodes",
                  "strip-before-barcode="] + boolean_opts
     e = scripter.Environment(long_opts=long_opts, version=VERSION, doc=__doc__)
     e.set_target_dir(os.curdir)
     e.parse_boolean_opts(boolean_opts)
-    e.update_script_kwargs(check_script_options(e.get_options()))
+    e.update_script_kwargs(check_script_options(e.get_options())) 
     e.set_filename_parser(BarcodeFilenameParser)
     e.do_action(splitter)
 
+
+def write_setup_file(controls):
+    setup_file = open('preprocess_reads.cfg', 'w')
+    setup_file.write('[main]\n')
+    for opt, value in controls.items():
+        if value == None: value = 'None'
+        record = 'opt = value' % (opt, value)
+        setup_file.write(record)
+    setup_file.close()
+
+def read_setup_file(setup_file):
+        if not exists(setup_file):
+            raise IOError(ENOENT, strerror(ENOENT), setup_file)
+        if not access(setup_file, R_OK):
+            raise IOError(EACCES, strerror(EACCES), setup_file)
+        config_parser = SafeConfigParser()
+        config_parser.readfp(open(setup_file, 'rU'))
+        cfg_opts = {}
+        for section in config_parser.sections():
+            for opt in config_parser.options(section):
+                value = config_parser.get(section, opt)
+                if value == 'None': value = None
+                cfg_opts[opt] = value
+        return cfg_opts
+
 def check_script_options(options):
+    if options.has_key('config'):
+        cfg_opts = read_setup_file(options['config'])
+        options.update(cfg_opts)
     sopts = {}
     if not options.has_key('linker'):
         linker = None
@@ -92,7 +121,8 @@ def check_script_options(options):
         
     if options.has_key('same-dir') or options.has_key('no-target'):
         sopts['no_target'] = True
-
+    
+    write_setup_file(options)
     return sopts
 
 def match_barcode(seq, barcodes, mismatches=1):

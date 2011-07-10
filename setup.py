@@ -20,7 +20,8 @@ except ImportError: pass
 
 def main():
 	if not float(sys.version[:3])>=2.5:
-		sys.stderr.write("CRITICAL: Python version must greater than or equal to 2.5! python 2.6.4 is recommended!\n")
+		sys.stderr.write("CRITICAL: Python version must greater than or equal "
+						 "to 2.5! python 2.6.4 is recommended!\n")
 		sys.exit(1)
 	setup(name='seriesoftubes',
           version = "2.4-pre1",
