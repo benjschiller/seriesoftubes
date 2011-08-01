@@ -28,10 +28,10 @@ def main():
 	      description='An extended pipeline for Solexa ChIP-seq data',
 	      author='Benjamin Schiller',
 	      author_email='benjamin.schiller@ucsf.edu',
-          install_requires = ['scripter>=2.0.2', 'biopython>=1.56',
+          install_requires = ['scripter>=2.1.0', 'biopython>=1.56',
 							  'twobitreader>=1.0.4', 'pysam>=0.4',
 							  'decorator'],
-	      packages = ['bioplus'],
+	      packages = ['bioplus', 'seriesoftubes', 'seriesoftubes.converters'],
           scripts = [os.path.join('scripts', x) for x in os.listdir('scripts') 
                      if not x.startswith('.')]
 	      )

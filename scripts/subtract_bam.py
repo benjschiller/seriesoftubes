@@ -18,8 +18,6 @@ mapped/alignments.BAM/crypto_h99_grubii_rRNA/random/crypto_small_RNA.dcr.2010.s_
 '''
 import glob
 import os
-import subprocess
-import collections
 import scripter
 from scripter import print_debug, InvalidFileException
 import pysam
@@ -27,12 +25,12 @@ VERSION = "2.4"
 
 def main():
     boolean_opts = ["sam-out", "remove-all"]
-    e = scripter.environment(version=VERSION, doc=__doc__)
+    e = scripter.Environment(version=VERSION, doc=__doc__)
     e.parse_boolean_opts(boolean_opts)
     e.set_source_dir('alignments.BAM')
     e.set_target_dir('alignments_filtered.BAM')
-    e.set_filename_parser(SubtractFilenameParser) 
-    e.do_action(action)
+    e.set_filename_parser(SubtractBamFilenameParser) 
+    e.do_action(remove_reads)
     
 def is_mapped(read):
     '''

@@ -24,6 +24,7 @@ from scripter import Environment, FilenameParser, InvalidFileException, Usage, \
                      path_to_executable,  print_debug
 
 VERSION = "2.4"
+TARGET_DIR = 'peaks'
 
 def main():
     long_opts = ["no-wig", "no-diag", "chrom-wigs", "no-subpeaks",
@@ -34,17 +35,18 @@ def main():
     path_to_R = path_to_executable(["R64", "R"])
     if e.is_debug(): print_debug('Found R at', path_to_R)
     e.set_source_dir('aligned.BAM')
-    e.set_target_dir('fromBAM.macs')
+    e.set_target_dir(TARGET_DIR)
     e.update_script_kwargs(check_script_options(e.get_options()))
     e.update_script_kwargs({'path_to_R': path_to_R,
                             'path_to_macs': path_to_macs})
     e.set_filename_parser(MacsFilenameParser)
     controls = e.get_script_kwargs()['controls']
-    write_setup_file(controls)
     e.do_action(run_macs, stay_open=True)
+    write_setup_file(controls)
+    sys.exit()
     
 def write_setup_file(controls):
-    setup_file = open(os.path.join('fromBAM.macs', 'setup.txt'), 'w')
+    setup_file = open(os.path.join(TARGET_DIR, 'setup.txt'), 'w')
     for sample, value in controls.items():
         name, control = value
         if control == None: control = 'None'
