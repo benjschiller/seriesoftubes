@@ -5,6 +5,9 @@ import os
 import glob
 URL_PREFIX = 'http://kryweb.ucsf.edu/data'
 URL_SEP ='/'
+from pkg_resources import get_distribution
+__version__ = get_distribution('seriesoftubes').version
+VERSION = __version__
 
 def main():
     '''the main function'''
@@ -24,7 +27,7 @@ def main():
 
             track_line = get_track_line(filename)
             if track_line is not None: print track_line
-	
+
 def get_track_line(filename):
     url_parts = filename.split(os.sep)
     filename_parts = url_parts[-1].split(os.extsep)

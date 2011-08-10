@@ -1,8 +1,5 @@
 #!/usr/bin/env python
 '''
---sam-out           Output SAM files (not BAM)
---remove-all        Remove all reads in mapped BAM/SAM file, not just mapped ones
-
 subtracts BAM (or SAM) files based on sequence names
 (for example, use to remove reads that also map rRNA)
 
@@ -19,16 +16,20 @@ mapped/alignments.BAM/crypto_h99_grubii_rRNA/random/crypto_small_RNA.dcr.2010.s_
 import glob
 import os
 import scripter
-from scripter import print_debug, InvalidFileException
+from scripter import InvalidFileException
 import pysam
-VERSION = "2.4"
+from pkg_resources import get_distribution
+__version__ = get_distribution('seriesoftubes').version
+VERSION = __version__
 
 def main():
-    boolean_opts = ["sam-out", "remove-all"]
     e = scripter.Environment(version=VERSION, doc=__doc__)
-    e.parse_boolean_opts(boolean_opts)
-    e.set_source_dir('alignments.BAM')
-    e.set_target_dir('alignments_filtered.BAM')
+    parser = e.argument_parser
+    parser.add_argument('--sam-out', action='store_true',
+                        help='Output SAM files (not BAM)')
+    parser.add_argument('--remove-all', action='store_true',
+                        help='Remove all reads in mapped BAM/SAM file, not just mapped ones')
+    parser.set_defaults(**{'target': 'filtered'})
     e.set_filename_parser(SubtractBamFilenameParser) 
     e.do_action(remove_reads)
     
@@ -57,7 +58,7 @@ note: you must be looking at a sorted file, or this won't work
                                    if is_mapped(read)])
 
     if debug:
-        print_debug('Found {!s} reads in {!s}'.format(len(reads_to_remove),
+        scripter.debug('Found {!s} reads in {!s}'.format(len(reads_to_remove),
                                                    parsed_filename.mapped_file))
     
     with pysam.Samfile(parsed_filename.input_file) as bam_file:
@@ -70,11 +71,8 @@ note: you must be looking at a sorted file, or this won't work
     return
 
 class SubtractBamFilenameParser(scripter.FilenameParser):
-    def __init__(self, filename, verbose=False, sam_out=False,
-                debug=False, *args, **kwargs):
+    def __init__(self, filename, sam_out=False, *args, **kwargs):
         super(SubtractBamFilenameParser, self).__init__(filename,
-                                                        verbose=verbose,
-                                                        debug=debug,
                                                         sam_out=sam_out,
                                                         *args,
                                                         **kwargs)
@@ -94,8 +92,7 @@ class SubtractBamFilenameParser(scripter.FilenameParser):
                 raise scripter.Usage('Could not find mapped file')
             else:
                 raise scripter.Usage('Ambiguous mapped file', *potential_filenames)
-            if debug:
-                print_debug('Mapped file will be', self.mapped_file)
+            scripter.debug('Mapped file will be', self.mapped_file)
 
             if sam_out:
                 self.output_file = os.sep.join([self.output_dir,
@@ -103,8 +100,6 @@ class SubtractBamFilenameParser(scripter.FilenameParser):
             else:
                 self.output_file = os.sep.join([self.output_dir,
                                                self.with_extension('bam')])
-
-            if debug:
-                print_debug('Output file will be', self.output_file)
+            scripter.debug('Output file will be', self.output_file)
 
 if __name__=="__main__": main()

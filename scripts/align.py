@@ -1,29 +1,13 @@
 #!/usr/bin/env python
 """
-align FASTQ files with bowtie, produces BAM files (sorted and indexed)
-Output is three folders
-    all.BAM/            sorted, indexed BAM files with mapped + unmapped reads
-    aligned.BAM/        sorted, indexed BAM files with mapped reads only
-    unique_tags.BAM/    sorted, indexed BAM files with UNIQUE mapped reads only
-In all/aligned.BAM, there will be a folder for each reference genome
-    e.g. all.BAM/ref1 , all.BAM/ref2, aligned.BAM/ref1, aligned.BAM/ref2
+align FASTQ, SAM, or BAM file (gzip and bzip2 supported)
+with bowtie, produces BAM files (sorted and indexed)
+output will be in ./align
+In align, there will be a folder for each reference genome
+    e.g. align/ref1 , align/ref2, align/ref1, align/ref2
 In reference folder, there will be a folder for unique or random alignments
     (unique means only maps to one spot, random is maq-like behavior)
-    e.g. all.BAM/ref1/random, all.BAM/ref1/unique, etc.
-
---references=ref1,ref2  use reference genomes ref1, ref2
-                        (default is hg19,hg18)
---mismatches=n          allow n mismatches in the seed (default is 2)
-                        (allow n mismatches total if --ignore-quality)
---seed-length=m         use seed length of m (default is 28)
---ignore-quality        Use -v mode with bowtie, allows only n mismatches total
---quals-type=           integer, solexa1.3, solexa, phred33, or phred64 (see bowtie)
-                        (default is --quals-type=solexa1.3)
---max-quality=          specify maximum quality scores of all mismatched
-                        positions (default is 70), ignored in -v mode
-
---no-unique           do not produce unique/ alignment folder 
---no-random           do not produce random/ alignment folder 
+    e.g. align/ref1/random, align/ref1/unique, etc.
 """
 import gzip
 import bz2
@@ -45,80 +29,46 @@ if platform.system() == 'Windows':
 This is due to an underlying design problem in the OS.
 Use cygwin if you need to run this on Windows.""")
     
-SOURCE_DIR = 'sequences.FASTQ'
-TARGET_DIR = 'all.BAM'
-FILTERED_DIR = 'aligned.BAM'
-UNIQUE_TAGS_DIR = 'unique_tags.BAM'
-VERSION = "2.4"
+from pkg_resources import get_distribution
+__version__ = get_distribution('seriesoftubes').version
+VERSION = __version__
 
 def main():
-    long_opts = ["no-random", "no-unique-tags",
-                 "no-unique", "no-filtering", "mismatches=",
-                 "seed-length=", "quals-type=", "references=", "max-quality=",
-                 "bowtie="]
-    e = Environment(long_opts=long_opts, version=VERSION, doc=__doc__)
+    e = Environment(version=VERSION, doc=__doc__)
     e.set_filename_parser(BowtieFilenameParser)
-    common_flags = ['-y', '-a', '--time', '--best', '--chunkmbs', '1024',
-                    '--strata', '--sam']
-    if not platform.system() == 'Windows':
-        # then let bowtie do the multiprocessing
-        num_cpus = e.get_num_cpus()
-        if num_cpus > 1:
-            e.set_num_cpus(1)
-            common_flags.extend(['-p', str(num_cpus)])
-    path_to_bowtie = path_to_executable('bowtie', '/usr/local/bowtie-*')
-    path_to_samtools = path_to_executable('samtools', '/usr/local/samtools*')
-    e.update_script_kwargs({'common_flags': common_flags,
-                        'path_to_bowtie': path_to_bowtie,
-                        'path_to_samtools': path_to_samtools})
-    e.update_script_kwargs(check_script_options(e.get_options()))
-    e.set_source_dir(SOURCE_DIR)
-    e.set_target_dir(TARGET_DIR)
+    # let bowtie do the multiprocessing
+    e.override_num_cpus(1)
+    parser = e.argument_parser
+    parser.add_argument('--path-to-bowtie', nargs='?',
+                        default=path_to_executable('bowtie', '/usr/local/bowtie-*'),
+                        help='The path to the bowtie executable')
+    parser.add_argument('--path-to-samtools', nargs='?',
+                        default=path_to_executable('samtools', '/usr/local/samtools*'),
+                        help='The path to the samtools executable')
+    parser.add_argument('--references', '--ref', nargs='*',
+                        default=['hg19', 'hg18'],
+                        help='Reference genomes to align against (requires the appropriate bowtie index)',
+                        )
+    parser.add_argument('--no-unique', dest='unique', action='store_false',
+                        help='do not produce unique/ alignment folder') 
+    parser.add_argument('--no-random', dest='random', action='store_false',
+                        help='do not produce random/ alignment folder') 
+    parser.add_argument('--ignore-quality', dest='use_quality',
+                        action='store_false',
+                        help='Use -v mode with bowtie, allows only n mismatches total')
+    parser.add_argument('--mismatches', default='2',
+                        help="allow n mismatches, in the seed (default) or total if --ignore-quality")
+    parser.add_argument('--quals-type', default='solex1.3',
+                        choices=['solexa', 'solexa1.3', 'phred64', 'phred33',
+                                 'integer'],
+                        help='Valid options are integer, solexa1.3, solexa, phred33, or phred64 (see bowtie for more info)')
+    parser.add_argument('--max-quality', default='70',
+                        help='specify maximum quality scores of all mismatched positions (default is 70), ignored in -v mode')
+    parser.add_argument('--seed-length', default='28',
+                        help='use seed length of m (default is 28)')
     e.do_action(align)
 
-@exit_on_Usage
-def check_script_options(options):
-    specific_options = {}
-    if options.has_key('references'):
-        specific_options['references'] = options['references'].split(',')
-    else: # default to hg18,hg19
-        specific_options['references'] = ['hg19', 'hg18']
-
-    unique = not options.has_key('no-unique')
-    random = not options.has_key('no-random')
-    if not unique and not random: raise Usage('Nothing to do')
-    specific_options.update({'unique': unique, 'random': random})
-
-    specific_options['use_quality'] = not options.has_key('ignore-quality')  
-
-    if options.has_key('mismatches'):
-        specific_options['mismatches'] = options['mismatches']
-    else:
-        specific_options['mismatches'] = '2'
-
-    if options.has_key('quals-type'):
-        if options['quals-type'] in ['solexa', 'solexa1.3', 'phred64', 
-                                       'phred33','integer']:
-            specific_options['quals_type'] = options['quals-type']
-        else: raise Usage('invalid quals-type')
-    else:
-        specific_options['quals_type'] = 'solexa1.3' # same as bowtie
-
-    if options.has_key('max-quality'):
-        specific_options['max_quality'] = options['max-quality']
-    else:
-        specific_options['max_quality'] = '70' # same as bowtie
-
-    if options.has_key('seed-length'):
-        specific_options['seed_len'] = options['seed-length']
-    else:
-        specific_options['seed_len'] = '28' # same as bowtie
         
-    if options.has_key("bowtie"):
-        specific_options['path_to_bowtie'] = options['bowtie']
-    return specific_options
-
-
 class PolledPipe(object):
     """
     A PolledPipe object has two attributes
@@ -173,11 +123,15 @@ class PolledPipe(object):
             self._logger.log(level, line)
         return
 
+@exit_on_Usage
 def align(fp_obj, references=[], random=True, unique=True, max_quality='70',
           quals_type='solexa1.3',  mismatches='2', seed_len='28',
-          use_quality=True,
-          common_flags=[], **kwargs):
-    logger = get_logger(10)
+          use_quality=True, logging_level=10, num_cpus=1, **kwargs):
+    if not unique and not random: raise Usage('Nothing to do')
+    common_flags = ['-y', '-a', '--time', '--best', '--chunkmbs', '1024',
+                    '--strata', '--sam']
+    common_flags.extend(['-p', str(num_cpus)])
+    logger = get_logger(logging_level)
     uniqueness = {}
     if unique: uniqueness.update({'unique': ['-m','1']})
     if random: uniqueness.update({'random': ['-M','1']})
@@ -215,10 +169,6 @@ def align_once(fp_obj, flags, ref, match_type, use_quality=False,
     second_file = fp_obj.second_file
     if second_file is not None: filename2 = os.path.abspath(second_file)
     else: filename2 = None
-    
-    if path_to_bowtie is None: path_to_executable('bowtie*')
-    if path_to_samtools is None: path_to_executable('samtools*')
-    
     
     # finish parsing input here
     input_stderr = PolledPipe(logger=logger, level=logging.ERROR)

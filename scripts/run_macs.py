@@ -1,16 +1,7 @@
 #!/usr/bin/env python
 '''
 calls peaks using MACS
-
---setup=setup.txt   specify file with matched sample/controls
-
---no-wig            do not generate wiggle files (also disable subpeaks)
---chrom-wigs        generate a wig file per chromosome instead of a single wig
---no-diag           disable generation of diagnostic xls file
---no-subpeaks       do not call subpeaks with PeakSplitter
---no-pdf            do not generate a pdf of the model using R
---no-fix            do not auto-fix subpeaks filename
---fix-only          only fix subpeaks filename, do nothing else
+use --config to specify file with matched sample/controls
 '''
 from ConfigParser import ConfigParser
 import sys
@@ -20,32 +11,47 @@ from os import access, extsep, strerror, R_OK
 from os.path import exists
 import platform
 import subprocess
-from scripter import Environment, FilenameParser, InvalidFileException, Usage, \
-                     path_to_executable,  print_debug
-
-VERSION = "2.4"
+import scripter
+from scripter import Environment, FilenameParser, InvalidFileException, \
+                     path_to_executable, get_logger
+from pkg_resources import get_distribution
+__version__ = get_distribution('seriesoftubes').version
+VERSION = __version__
 TARGET_DIR = 'peaks'
 
 def main():
-    long_opts = ["no-wig", "no-diag", "chrom-wigs", "no-subpeaks",
-                 "no-pdf", "fix-only", "no-fix", "setup="]
-    e = Environment(long_opts=long_opts, doc=__doc__, version=VERSION)
-    path_to_macs = path_to_executable(["macs14", "macs14.py", "macs"])
-    if e.is_debug(): print_debug('Found MACS at', path_to_macs)
-    path_to_R = path_to_executable(["R64", "R"])
-    if e.is_debug(): print_debug('Found R at', path_to_R)
-    e.set_source_dir('aligned.BAM')
+    e = Environment(doc=__doc__, version=VERSION)
+    parser = e.argument_parser
+    parser.add_argument('--path-to-macs',
+                        default=path_to_executable(["macs14", "macs14.py", "macs"]))
+    parser.add_argument('--path-to-R',
+                        default=path_to_executable(["R64", "R"]))
+    parser.add_argument('--no-wig', dest='wig', action='store_false',
+                        default=True,
+                        help='do not generate wiggle files (also disable subpeaks')
+    parser.add_argument('--chrom-wigs', dest='single_wig', action='store_false',
+                        default=True,
+                        help='generate a wig file per chromosome instead of a single wig')
+    parser.add_argument('--no-diag', dest='diag', action='store_false', default=True,
+                        help='disable generation of diagnostic xls file')
+    parser.add_argument('--no-subpeaks', dest='subpeaks', action='store_false',
+                        default=True,
+                        help='do not call subpeaks with PeakSplitter')
+    parser.add_argument('--no-pdf', dest='make_pdf', action='store_false', default=True,
+                        help='do not generate a pdf of the model using R')
+    g = parser.add_mutually_exclusive_group()
+    g.add_argument('--no-fix', dest='fix', action='store_false', default=True,
+                   help='do not auto-fix subpeaks filename')
+    g.add_argument('--fix-only', action='store_true', default=True,
+                   help='only fix subpeaks filename, do nothing else')
     e.set_target_dir(TARGET_DIR)
-    e.update_script_kwargs(check_script_options(e.get_options()))
-    e.update_script_kwargs({'path_to_R': path_to_R,
-                            'path_to_macs': path_to_macs})
     e.set_filename_parser(MacsFilenameParser)
-    controls = e.get_script_kwargs()['controls']
+    e.set_config_reader(read_setup_file)
+    e.set_config_writer(write_setup_file)
     e.do_action(run_macs, stay_open=True)
-    write_setup_file(controls)
     sys.exit()
     
-def write_setup_file(controls):
+def write_setup_file(controls=None, *args, **kwargs):
     setup_file = open(os.path.join(TARGET_DIR, 'setup.txt'), 'w')
     for sample, value in controls.items():
         name, control = value
@@ -73,27 +79,9 @@ def read_setup_file(setup_file):
             controls[sample] = (name, control)
         return controls
             
-def check_script_options(options):
-    specific_options = {}
-
-    specific_options['wig'] = not options.has_key('no-wig')
-    specific_options['single_wig'] = not options.has_key('chrom-wigs')
-    specific_options['diag'] = not options.has_key('no-diag')
-    specific_options['subpeaks'] = not options.has_key('no-subpeaks')
-    specific_options['make_pdf'] = not options.has_key('no-pdf')
-    specific_options['fix_only'] = options.has_key('fix-only')
-    specific_options['fix'] = not options.has_key('fix')
-
-    if options.has_key("setup"):
-        specific_options['controls'] = read_setup_file(options['setup'])
-    
-    if not specific_options['fix'] and specific_options['fix_only']:
-        raise Usage('Cannot specify both --no-fix and --fix-only')
-
-    return specific_options
 
 class MacsFilenameParser(FilenameParser):
-    def __init__(self, filename, controls = {}, debug=False, *args, **kwargs):
+    def __init__(self, filename, controls = {}, *args, **kwargs):
         if not os.path.splitext(filename)[1] == '.bam':
             raise InvalidFileException(filename)
         super(MacsFilenameParser, self).__init__(filename, *args, **kwargs)
@@ -102,17 +90,18 @@ class MacsFilenameParser(FilenameParser):
         # check controls
         if controls.has_key(sample):
             run_name, control = controls[sample]
-            if debug: print_debug(sample, 'has control', control)
+            scripter.debug('%s has control %s', sample, control)
             if control is None:
                 self.control_file = None
             else:
                 self.control_file = os.path.join(self.input_dir,
                                                  control + '.bam')
         elif sample in [v[1] for v in controls.values()]:
-            if debug: print_debug(sample, 'is a control, aborting')
+            scripter.debug('%s is a control, aborting', sample)
             raise InvalidFileException
         else:
-            if debug: print_debug(sample, 'has no control indicated, continuing anyway')
+            scripter.debug('%s has no control indicated, continuing anyway',
+                           sample)
             # not in setup.txt, make an entry in controls
             self.control_file = None
             run_name = sample
@@ -132,21 +121,21 @@ def _join_opt(a,b):
     '''
     return '='.join([a,b])
 
-def run_macs(parsed_filename, debug=False, silent=False,
+def run_macs(parsed_filename,
            wig=True, single_wig=True, diag=True, subpeaks=True,
            make_pdf=True, fix_only=False, fix=True, 
-           path_to_macs=None, path_to_R=None,
+           path_to_macs=None, path_to_R=None, logging_level=10,
            **kwargs):
     """Run MACS on a BAM file and produce the pdf from the .R model"""
+    logger = get_logger(logging_level)
     if fix_only:
         return fix_subpeaks_filename(parsed_filename)
 
     input_file = parsed_filename.input_file
     control_file = parsed_filename.control_file
-    if debug:
-        print_debug('Processing', input_file)
-        if control_file is not None:
-            print_debug('with control', control_file)
+    logger.debug('Processing', input_file)
+    if control_file is not None:
+        logger.debug('with control', control_file)
 
     macs_options = ['--format=BAM']
     if wig:
@@ -169,7 +158,7 @@ def run_macs(parsed_filename, debug=False, silent=False,
     else:
         step = [path_to_macs] + macs_options
     
-    if debug: print_debug('Launching', ' '.join(step))
+    logger.debug('Launching', ' '.join(step))
     job = subprocess.Popen(step,
                            stdout=subprocess.PIPE,
                            stderr=subprocess.STDOUT,
@@ -180,18 +169,17 @@ def run_macs(parsed_filename, debug=False, silent=False,
    
     if subpeaks and fix:
         output = fix_subpeaks_filename(parsed_filename)
-        if debug: print_debug('{0!s}\n{1!s}'.format(stdout_buffer, output))
+        logger.debug('{0!s}\n{1!s}'.format(stdout_buffer, output))
 
     # now process R file
     if make_pdf:
         R_file = os.path.join(os.getcwd(), parsed_filename.output_dir,
                               ''.join([parsed_filename.protoname, '_model.r']))
 
-        if debug: print_debug('Processing', R_file)
+        logger.debug('Processing', R_file)
 
         if not os.path.exists(R_file):
-            if not silent:
-                print_debug('Warning:', R_file, 'does not exist')
+            logger.debug('Warning:', R_file, 'does not exist')
         else:
             R_pointer = open(R_file)
             if path_to_R is None:

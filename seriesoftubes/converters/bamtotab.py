@@ -27,18 +27,17 @@ def read_files(files):
     for file in files:
         if file is None: continue
         f = pysam.Samfile(file)
+        last = None
         for aread in f:
             qname = aread.qname or ''
             seq = aread.seq or ''
             qual = aread.qual or ''
-            if aread.is_paired:
-                if aread.is_read2: continue
-                whence = f.tell()
-                aread2 = f.mate(aread)
-                seq2 = aread2.seq or ''
-                qual2 = aread2.qual or ''
-                f.seek(whence)
-                print '%s\t%s\t%s\t%s\t%s' % (qname, seq, qual, seq2, qual2)
+            if last is not None:
+                name, seq1, qual1 = last
+                print '%s\t%s\t%s\t%s\t%s' % (name, seq1, qual1, seq, qual)
+                last = None
+            elif aread.is_paired:
+                last  = (qname, seq, qual) 
             else:
                 print '%s\t%s\t%s' % (qname, seq, qual)
     exit(0)        

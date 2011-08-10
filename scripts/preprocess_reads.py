@@ -7,28 +7,14 @@ We can
 + Separate reads by a set of variable-length barcodes
 + Cleave linker/adaptor sequence from the 3' ends of reads
 + Cleave adaptor sequence from the 5' end
-    - before barcode
+    + before barcode
     + after barcode
 + Removing trailing Ns from sequences
 + Discard sequences that are less than 4 nucleotides in length
-+ Produce FASTQ sequence files ready for immediate alignment
++ Produce gzipped FASTQ sequence files ready for immediate alignment
 
-A configuration file 'preprocess_reads.cfg' is saved in the current
+A configuration file 'preprocess_reads.cfg' is saved in target
 directory (unless one is provided by the user).
-
-Command-line flags
---config=foo            Use configuration in file foo
---barcodes=SEQ1,SEQ2    (default: TCAT,GACG,AGTC,CTGA)
---linker=               Specify a 3' adaptor/linker sequence that we should
-                        clip off of each read
---no-target, --same-dir  keep new files in the same directory as the input files
---strip-before-barcode=n strip n bases after the barcode is removed (5' end)
-                        (by default this 0 now, and is ignored if GERALD
-                         handled the barcoding)
---strip-after-barcode=n strip n bases after the barcode is removed (5' end)
-                        (by default this 1 now, and is ignored if GERALD
-                         handled the barcoding)
---max-length=n          truncate final sequences to n bases (default: ignore)
 
 *it expects that files are named s_?_sequence.* (single-end reads) or
                                  s_?_[12]_sequence.* (paired-end reads)
@@ -37,93 +23,88 @@ import os
 from itertools import imap, izip, chain
 from functools import partial
 import scripter
-from scripter import print_debug, assert_path, InvalidFileException
+from scripter import assert_path, InvalidFileException
+from seriesoftubes.converters.discover import discover_file_format
 from Bio.SeqIO.QualityIO import FastqGeneralIterator
 from ConfigParser import SafeConfigParser
 from errno import ENOENT, EACCES
 from os import access, strerror, R_OK
 from os.path import exists
-VERSION = "2.4"
-DEFAULT_BARCODES = ['TCAT', 'GACG', 'AGTC', 'CTGA']
+import argparse
+from gzip import GzipFile
+from pkg_resources import get_distribution
+__version__ = get_distribution('seriesoftubes').version
+VERSION = __version__
 
+def valid_seq(s):
+        if not s.isalpha() and len(s)>0:
+            msg = '%s is not a valid sequence'
+            raise argparse.ArgumentTypeError(msg)
+        else:
+            return s.upper()
+        
 def main():
-    boolean_opts = ["no-target", "same-dir"]
-    long_opts = ["barcodes=", "strip-after-barcode=", "linker=", "no-barcodes",
-                 "strip-before-barcode="] + boolean_opts
-    e = scripter.Environment(long_opts=long_opts, version=VERSION, doc=__doc__)
-    e.set_target_dir(os.curdir)
-    e.parse_boolean_opts(boolean_opts)
-    e.update_script_kwargs(check_script_options(e.get_options())) 
+    e = scripter.Environment(version=VERSION, doc=__doc__)
+    parser = e.argument_parser
+    parser.add_argument('--strip-after-barcode', default=1, type=int,
+                        help="""strip n bases after the barcode is removed (5' end)
+(by default this 1 now, and is ignored if GERALD handled the barcoding)""")
+    parser.add_argument('--strip-before-barcode', default=0, type=int,
+                        help="""strip n bases before the barcode is removed (5' end)
+(by default this 0 now, and is ignored if GERALD handled the barcoding)""")
+    parser.add_argument('--max-length', type=int,
+                        help='truncate final sequences to n bases (default: ignore)')
+    bgroup = parser.add_argument_group('barcodes',
+                                       'Specify sequence barcodes in the sample(s)')
+    bgroup.add_argument('-b', '--barcodes', action='append', type=valid_seq,
+                        help="Specify a barcode sequence. May be invoked multiple times")
+    bgroup.add_argument('--kry-barcodes', dest='barcodes', action='store_const',
+                        help='Alias for -bTCAT -bGACG -bAGTC -bCTGA',
+                        const=['TCAT', 'GACG', 'AGTC', 'CTGA'])
+    parser.add_argument('--linker', default=None, type=valid_seq,
+                        help="Specify a 3' adaptor/linker sequence that we should clip off of each read")
+    parser.set_defaults(**{'target': 'processed'})
     e.set_filename_parser(BarcodeFilenameParser)
+    e.set_config_reader(read_config)
+    e.set_config_writer(write_config)
     e.do_action(splitter)
 
+def write_config(barcodes=None, max_length=None, strip_after_barcode=0,
+                 strip_before_barcode=0, linker=None,
+                 *args, **kwargs):
+    config = SafeConfigParser()
+    config.add_section('main')
+    if barcodes is not None:
+        config.set('main', 'barcodes', ','.join(barcodes))
+    if linker is not None:
+        config.set('main', 'linker', linker)
+    if max_length is not None:
+        config.set('main', 'max-length', str(max_length))
+    config.set('main', 'strip-after-barcode', str(strip_after_barcode))
+    config.set('main', 'strip-before-barcode', str(strip_before_barcode))
+    with open('preprocess_reads.cfg', 'wb') as configfile:
+        config.write(configfile)
 
-def write_setup_file(controls):
-    setup_file = open('preprocess_reads.cfg', 'w')
-    setup_file.write('[main]\n')
-    for opt, value in controls.items():
-        if value == None: value = 'None'
-        record = 'opt = value' % (opt, value)
-        setup_file.write(record)
-    setup_file.close()
-
-def read_setup_file(setup_file):
-        if not exists(setup_file):
-            raise IOError(ENOENT, strerror(ENOENT), setup_file)
-        if not access(setup_file, R_OK):
-            raise IOError(EACCES, strerror(EACCES), setup_file)
-        config_parser = SafeConfigParser()
-        config_parser.readfp(open(setup_file, 'rU'))
-        cfg_opts = {}
-        for section in config_parser.sections():
-            for opt in config_parser.options(section):
-                value = config_parser.get(section, opt)
-                if value == 'None': value = None
-                cfg_opts[opt] = value
-        return cfg_opts
-
-def check_script_options(options):
-    if options.has_key('config'):
-        cfg_opts = read_setup_file(options['config'])
-        options.update(cfg_opts)
-    sopts = {}
-    if not options.has_key('linker'):
-        linker = None
-    else:
-        linker = options['linker']
-        if not linker.isalpha() and len(linker)>0:
-            raise scripter.Usage('invalid linker')
-    sopts['linker'] = linker
-    
-    # default to DEFAULT_BARCODES if none specified
-    if options.has_key('barcodes'):
-        barcodes_user = options['barcodes']
-        if barcodes_user.strip()=='': barcodes = None
-        else: barcodes = barcodes_user.split(',')
-    else:
-        if options.has_key('no-barcodes'): barcodes = None
-        else:
-            barcodes = DEFAULT_BARCODES
-    sopts['barcodes'] = barcodes
-
-    if options.has_key('strip-after-barcode'):
-        sopts['strip_after_barcode'] = options['strip-after-barcode']
-    else: # default to TCAT,GACG
-        sopts['strip_after_barcode'] = 1
-        
-    if options.has_key('strip-before-barcode'):
-        sopts['strip_before-barcode'] = options['strip-before-barcode']
-    else:
-        sopts['strip_before_barcode'] = 0
-        
-    if options.has_key('max-length'):
-        sopts['max_length'] = int(options['max-length'])
-        
-    if options.has_key('same-dir') or options.has_key('no-target'):
-        sopts['no_target'] = True
-    
-    write_setup_file(options)
-    return sopts
+def read_config(setup_file):
+    if not exists(setup_file):
+        raise IOError(ENOENT, strerror(ENOENT), setup_file)
+    if not access(setup_file, R_OK):
+        raise IOError(EACCES, strerror(EACCES), setup_file)
+    config = SafeConfigParser()
+    config.readfp(open(setup_file, 'rU'))
+    context = {}
+    if config.has_option('main', 'barcodes'):
+        context['barcodes'] = config.get('main', 'barcodes').split(',')
+    else: context['barcodes'] = None
+    if config.has_option('main', 'max-length'):
+        context['max_length'] = int(config.get('main', 'max-length'))
+    else: context['max_length'] = None
+    if config.has_option('main', 'linker'):
+        context['linker'] = config.get('main', 'linker')
+    else: context['linker'] = None
+    context['strip_after_barcode'] = int(config.get('main', 'strip-after-barcode'))
+    context['strip_before_barcode'] = int(config.get('main', 'strip-before-barcode'))
+    return context
 
 def match_barcode(seq, barcodes, mismatches=1):
     """
@@ -201,36 +182,41 @@ def trim_trailing_Ns(record):
     return (barcode, (title, seq[0:i], qual[0:i]))
 
 def splitter(pf, **kwargs):
-    if pf.paired_end: return split_paired_files(pf, **kwargs)
-    else: return split_file(pf, **kwargs)
+    logger = scripter.get_logger()
+    if pf.paired_end: return split_paired_files(pf, logger=logger, **kwargs)
+    else: return split_file(pf, logger=logger, **kwargs)
 
-def split_file(parsed_filename,
-               barcodes=DEFAULT_BARCODES, linker=None, min_length=4,
-               max_length=None,
+def split_file(fp_obj, no_gzip=False,
+               barcodes=None, linker=None, min_length=4,
+               max_length=None, logger=None,
                verbose=False, **kwargs):
-    f = open(parsed_filename.input_file, "rU")
+    filename = fp_obj.input_file
+    open_func, format = discover_file_format(filename)
+    f = open_func(filename, "rU")
     records = FastqGeneralIterator(f)
     
     barcoded_files = {}
     filenames = []
-    output_filename = parsed_filename.output_filename
+    output_filename = partial(fp_obj.output_filename, no_gzip=no_gzip)
+    if no_gzip: open_func = open
+    else: open_func = GzipFile
     if barcodes is not None:
         processed_file = None
         for barcode in barcodes:
             fname = output_filename(barcode)
             filenames.append(fname)
-            barcoded_files[barcode] = open(fname, 'w')
+            barcoded_files[barcode] = open_func(fname, 'w')
         
         # and make a unmatched file
         unmatched_filename = output_filename("unmatched")
         filenames.append(unmatched_filename)
-        unmatched_file = open(unmatched_filename, 'w')
+        unmatched_file = open_func(unmatched_filename, 'w')
     else:
         barcoded_files = None
         unmatched_file = None
         processed_filename = output_filename("processed", is_barcode=False)
         filenames.append(processed_filename)
-        processed_file = open(processed_filename, 'w')
+        processed_file = open_func(processed_filename, 'w')
 
     # assigned_records is a list of (barcode, record) items
     writer = partial(write_record, barcoded_files=barcoded_files,
@@ -253,17 +239,12 @@ def split_file(parsed_filename,
     if unmatched_file is not None: unmatched_file.close()
     if processed_file is not None: processed_file.close()
     
-    if verbose:
-        stdout_buffer = 'Split {0!s} as {1!s}'.format(parsed_filename.input_file,
-                                           ', '.join(filenames))
-        stdout_buffer += '\n'.join([parsed_filename.output_filename,
-                    'Processed {0!s} records'.format(record_count),
-                    '{0!s} linker only dimers'.format(linker_only),
-                    '{0!s} sequences too short (1-3 bp)'.format(too_short)])
-        return stdout_buffer
-    else: return
+    logger.info('Split %s as %s ', fp_obj.input_file, ', '.join(filenames))
+    logger.info('Processed %s records', record_count)
+    logger.info('%s linker only dimers', linker_only)
+    logger.info('%s sequences too short (1-3 bp)', too_short)
     
-def assign_record(record, barcodes=DEFAULT_BARCODES):
+def assign_record(record, barcodes=None):
     """
     Assign a record to a barcode
     returns (barcode, new_record)
@@ -396,7 +377,7 @@ def is_empty_record(record):
 def pair_has_empty_record(record_pair):
     return is_empty_record(record_pair[0]) or is_empty_record(record_pair[1])
         
-def apply_plan(records, barcodes=DEFAULT_BARCODES,
+def apply_plan(records, barcodes=None,
                min_length=4, max_length=None,
                strip_after_barcode = 1, strip_before_barcode=0,
                **kwargs):
@@ -420,22 +401,29 @@ def apply_plan(records, barcodes=DEFAULT_BARCODES,
     if max_length is not None:
         truncator = partial(truncate_record, max_length=max_length)
         neat_records = imap(truncator, further_trimmed_records)
+    else: neat_records = further_trimmed_records
     return neat_records
         
 
-def split_paired_files(parsed_filename,
-                       barcodes=DEFAULT_BARCODES, linker=None,
-                min_length=4,
-                verbose=False, **kwargs):
-    f = open(parsed_filename.input_file, "rU")
-    f2 = open(parsed_filename.second_file, "rU")
+def split_paired_files(fp_obj, no_gzip=False,
+                       barcodes=None, linker=None,
+                       min_length=4, logger=None,
+                       verbose=False, **kwargs):
+    filename = fp_obj.input_file
+    filename2 = fp_obj.second_file
+    open_func = discover_file_format(filename)[0]
+    open_func2 = discover_file_format(filename2)[0]
+    f = open_func(filename, "rU")
+    f2 = open_func2(filename2, "rU")
     records = FastqGeneralIterator(f)
     records2 = FastqGeneralIterator(f2)
         
     barcoded_file_pairs = {}
     filenames = []
-    output_filename = parsed_filename.output_filename
-    output_filename2 = parsed_filename.output_filename2
+    if no_gzip: open_func = open
+    else: open_func = GzipFile
+    output_filename = partial(fp_obj.output_filename, no_gzip=no_gzip)
+    output_filename2 = partial(fp_obj.output_filename2, no_gzip=no_gzip)
     if barcodes is not None:
         processed_files = None
         orphaned_read_files = None
@@ -443,19 +431,19 @@ def split_paired_files(parsed_filename,
             fname = output_filename(barcode)
             fname2 = output_filename2(barcode)
             filenames.extend((fname, fname2))
-            barcoded_file_pairs[barcode] = (open(fname, 'w'), 
-                                            open(fname2, 'w'))
+            barcoded_file_pairs[barcode] = (open_func(fname, 'w'), 
+                                            open_func(fname2, 'w'))
         
         # and make a unmatched file
         unmatched_filename = output_filename("unmatched")
         unmatched_filename2 = output_filename2("unmatched")
-        unmatched_files = (open(unmatched_filename, 'w'),
-                           open(unmatched_filename2, 'w'))
+        unmatched_files = (open_func(unmatched_filename, 'w'),
+                           open_func(unmatched_filename2, 'w'))
     
         mismatched_filename = output_filename("mismatched")
         mismatched_filename2 = output_filename2("mismatched")
-        mismatched_files = (open(mismatched_filename, 'w'),
-                            open(mismatched_filename2, 'w'))
+        mismatched_files = (open_func(mismatched_filename, 'w'),
+                            open_func(mismatched_filename2, 'w'))
         filenames.extend((unmatched_filename, unmatched_filename2,
                           mismatched_filename, mismatched_filename2))
     else:
@@ -466,12 +454,12 @@ def split_paired_files(parsed_filename,
                                                  is_barcoded=False)
         orphaned_read_filename2 = output_filename2("mismatched",
                                                    is_barcoded=False)
-        orphaned_read_files = (open(orphaned_read_filename, 'w'),
-                               open(orphaned_read_filename2, 'w'))
+        orphaned_read_files = (open_func(orphaned_read_filename, 'w'),
+                               open_func(orphaned_read_filename2, 'w'))
         processed_filename = output_filename("processed", is_barcoded=False)
         processed_filename2 = output_filename2("processed", is_barcoded=False)
-        processed_files = (open(processed_filename, 'w'),
-                           open(processed_filename2, 'w'))
+        processed_files = (open_func(processed_filename, 'w'),
+                           open_func(processed_filename2, 'w'))
         filenames.extend((orphaned_read_filename, orphaned_read_filename2),
                          (processed_filename, processed_filename2))
         
@@ -502,16 +490,11 @@ def split_paired_files(parsed_filename,
     mismatched_files[0].close()
     mismatched_files[1].close()
     
-    if verbose:
-        stdout_buffer = 'Split {0!s}, {1!s} as {2!s}'.format(parsed_filename.input_file,
-                                                parsed_filename.second_file,
-                                           ', '.join(filenames))
-        stdout_buffer += '\n'.join([parsed_filename.output_filename,
-                            'Processed {0!s} records'.format(record_count),
-                            '{0!s} linker only dimers'.format(linker_only),
-                            '{0!s} sequences too short (1-3 bp)'.format(too_short)])
-        return stdout_buffer
-    else: return
+    logger.info('Split %s, %s as %s', fp_obj.input_file, fp_obj.second_file,
+                ', '.join(filenames))
+    logger.info('Processed %s records', record_count)
+    logger.info('%s linker only dimers', linker_only)
+    logger.info('%s sequences too short (1-3 bp)', too_short)
 
 
 def cleave_3prime_linker(record, linker='', verbose=False, **kwargs):
@@ -566,10 +549,10 @@ class BarcodeFilenameParser(scripter.FilenameParser):
         input_file = self.input_file
         illumina_name = os.path.basename(input_file)
         if illumina_name.count('_') >= 3:
-            if verbose: print_debug('NOTICE: Detected paired read file.')
+            scripter.debug('NOTICE: Detected paired read file.')
             iln_parts = illumina_name.split('_')
             if iln_parts[2] == '1':
-                if verbose: print_debug('Attempting to find second file.')
+                scripter.debug('Attempting to find second file.')
 
                 second_file = os.sep.join([self.input_dir,
                                            '_'.join(iln_parts[0:2] + ['2'] 
@@ -578,42 +561,49 @@ class BarcodeFilenameParser(scripter.FilenameParser):
                                         os.path.basename(second_file))[0]
                 try:
                     assert_path(second_file)
-                    if verbose: print_debug('Found', second_file)
+                    scripter.debug('Found %s', second_file)
                     self.second_file = second_file
                     paired_end = True
                 except IOError:
-                    if verbose: print_debug('Failed to find paired end file')
+                    scripter.debug('Failed to find paired end file')
                     paired_end = False
             elif iln_parts[2] == '2':
-                if verbose: print_debug('This is the second file, ignoring it.')
+                scripter.debug('This is the second file, ignoring it.')
                 raise InvalidFileException(input_file)
             else:
-                if verbose: print_debug('Failed to find paired end')
+                scripter.debug('Failed to find paired end')
                 paired_end = False
         else: paired_end = False
         self.paired_end = paired_end
 
-    def output_filename(self, barcode, is_barcode=True):
+    def output_filename(self, barcode, is_barcode=True, no_gzip=False):
+        file_ext = self.file_extension
+        if no_gzip or file_ext == '.gz': end = '' 
+        else: end = '.gz'
         if is_barcode:
             return os.path.join(self.output_dir,
                                 os.extsep.join([self.protoname,
                                                 'barcode_' + barcode,
-                                                self.file_extension]))
+                                                file_ext + end]))
         else:
             return os.path.join(self.output_dir,
                                 os.extsep.join([self.protoname,
                                                 barcode,
-                                                self.file_extension]))
-    def output_filename2(self, barcode, is_barcode=True):
+                                                file_ext + end]))
+            
+    def output_filename2(self, barcode, is_barcode=True, no_gzip=False):
+        file_ext = self.file_extension
+        if no_gzip or file_ext == '.gz': end = '' 
+        else: end = '.gz'
         if is_barcode:
             return os.path.join(self.output_dir,
                                 os.extsep.join([self.protoname2,
                                                 'barcode_' + barcode,
-                                                self.file_extension]))
+                                                file_ext + end]))
         else:
             return os.path.join(self.output_dir,
                                 os.extsep.join([self.protoname2,
                                                 barcode,
-                                                self.file_extension]))
+                                                file_ext + end]))
 
 if __name__== "__main__": main()

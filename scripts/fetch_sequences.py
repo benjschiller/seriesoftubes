@@ -1,72 +1,77 @@
 #!/usr/bin/env python
 """
 fetch the FASTA sequences for the peaks
-
-requires 2bit file and the twoBitToFa, twoBitInfo tools
-from UCSC genome browser project
-
-Source input files (use only one):
---from-MACS-subpeaks        Fetch the peaks from MACS _subpeaks.bed
-                              (uses the summit position in column 4)
---from-MACS-xls             Fetch peaks from MACS _peaks.xls
---from-MACS-bed             Fetch peaks from MACS _peaks.bed
---peaks                     Assume the BED file contains the positions
-                                of peaks
---summits                   Assume the BED file contains the positions
-                                of peak summits
-
-Genome options (use only one):
---ref=foo                   Use 2bit file foo as reference genome
-                                (Looks also for /gbdb/foo/foo.2bit)
---hg18, --hg19, --mm9       aliases for --ref hg18, etc.
---path-to-gbdb=foo          If gbdb is not in /gbdb or C:\gbdb,
-                                specify the path here
-                                 
-Options for --peaks:
---from-center               Grab some interval of sequence from center of peak
-                                (for use with --width)
-
-Common options:
---width=x                   Get sequence x distance from the peak center/summit
-                                (implies --from-center when applicable)
-                                (default: 150)
-                                (note: if width is even, we will use width + 1)
---include-width-in-name     Include width in directory name for output
-                                (e.g. peaks_150.FASTA)
---sort                      Sort peaks if possible by
-                                number of reads under peak (MACS-xls)
-                                number of reads under summit (MACS-subpeaks)
-                                p-value (MACS-peaks)
---npeaks=#                  Include only the top # of peaks. If not --sort,
-                                we'll just take the first #.
---bed                       Make a BED file too saying where sequences come from
 """
 import os
 import operator
 import platform
+import argparse
 import twobitreader
 import scripter
-from scripter import Usage, print_debug, InvalidFileException
-VERSION = "2.4"
-SOURCE_DIR = 'fromBAM.MACS'
-TARGET_DIR = 'peaks.FASTA'
+from scripter import Usage, InvalidFileException, get_logger
+from pkg_resources import get_distribution
+__version__ = get_distribution('seriesoftubes').version
+VERSION = __version__
 
-def main():
-#    if platform.system() == 'Windows': windows_exit()
+def positive_int(i):
+    """
+    takes a string specifying an integer
+    returns a positive integer or raises an ArgumentTypeError
+    """
+    try:
+        I = int(i)
+    except ValueError, TypeError:
+        msg = '%d is not an integer' 
+        raise argparse.ArgumentTypeError(msg)
+    if not I > 0:
+        msg = '%d is not a positive integer' 
+        raise argparse.ArgumentTypeError(msg)
+    if I%2 == 0: return I + 1
+    else: return I
     
-    source_opts = ["from-MACS-subpeaks", "from-MACS-xls",
-                   "from-MACS-bed", "peaks", "summits"]
-    boolean_opts = ["include-width-in-name", "from-center", "sort",
-                    "bed"] + source_opts
-    long_opts = ["ref=", "hg19", "hg18", "mm9", "path-to-gbdb=",
-                 "width=","npeaks="] + boolean_opts
-    e = scripter.Environment(long_opts=long_opts, doc=__doc__, version=VERSION)
-    e.parse_boolean_opts(boolean_opts)
-    all_opts = check_script_options(e.get_options(), sources=source_opts,
-                                    debug=e.is_debug())
-    e.update_script_kwargs(all_opts)
-    e.set_source_dir(SOURCE_DIR)
-    e.set_target_dir(TARGET_DIR)
+def main():
+    e = scripter.Environment(doc=__doc__, version=VERSION)
+    parser = e.argument_parser
+    parser.add_argument('--include-width-in-name', action='store_true',
+                        help='Include width in directory name for output (e.g. peaks_150.FASTA)')
+    parser.add_argument('--bed', action='store_true',
+                        help='Make a BED file too saying where sequences come from')
+    parser.add_argument('--sort', action='store_true',
+                        help="""Sort peaks if possible by
+    number of reads under peak (MACS-xls)
+    number of reads under summit (MACS-subpeaks)
+    p-value (MACS-peaks)""")
+    sgroup = parser.add_mutually_exclusive_group(required=True)
+#                                             'source',
+#                                        'Source input files (use only one)')
+    sgroup.add_argument('--from-MACS-subpeaks', action='store_true',
+                        help='Fetch the peaks from MACS _subpeaks.bed '
+                        '(uses the summit position in column 4)')
+    sgroup.add_argument('--from-MACS-xls', action='store_true',
+                        help='Fetch peaks from MACS _peaks.xls')
+    sgroup.add_argument('--from-MACS-bed', action='store_true',
+                        help='Fetch peaks from MACS _peaks.bed')
+    sgroup.add_argument('--peaks', action='store_true',
+                        help='Assume the BED file contains the positions of peaks')
+    sgroup.add_argument('--summits', action='store_true',
+                        help='Assume the BED file contains the positions of peak summits')
+    parser.add_argument('--path-to-gbdb',
+help='Location of "gdbdb" or 2bit files. If gbdb is not in /gbdb or C:\gbdb, specify the path here')
+    ggroup = parser.add_mutually_exclusive_group('required=True')
+    ggroup.add('--ref',
+               help='Use 2bit file foo as reference genome (Looks also for {path-to-gbdb}/foo/foo.2bit))')
+    ggroup.add('--hg18', const='hg18', action='store_const',
+               help='Shortcut for --ref hg18') 
+    ggroup.add('--hg19', const='hg19', action='store_const',
+               help='Shortcut for --ref hg19') 
+    ggroup.add('--mm9', const='mm9', action='store_const',
+               help='Shortcut for --ref mm9') 
+    parser.add_argument('--width', type=positive_int,
+                        help="""Get sequence x distance from the peak center/summit
+    if width is even, we will use width + 1. Default is to use interval.""")
+    parser.add_argument('--npeaks', type=positive_int,
+                        help='Include only top # peaks (if not sorted, use first peaks)')
+    parser.set_defaults(**{'target': 'sequences'})
     e.set_filename_parser(FilenameParser)
     e.do_action(get_sequences)
 
@@ -93,47 +98,6 @@ def find_2bit_file(ref, path_to_gbdb=None):
     # give up
     raise Usage("Could not find 2bit file ", fname)
 
-def check_script_options(options, sources=[], debug=False):
-    sopts = {}
-   
-    # Find all reference genomes and their paths
-    options_count = sum([options.has_key("hg18"), options.has_key("hg19"),
-                        options.has_key("mm9"), options.has_key("ref")])
-    
-    if options.has_key('path-to-gbdb'):
-        path_to_gbdb = options['path-to-gbdb']
-        sopts["path_to_gbdb"] = path_to_gbdb
-    else:
-        path_to_gbdb = None
-    ref = None
-    if options_count == 0:
-        ref = None
-    elif options_count > 1:
-        raise Usage("More than one reference genome specified")
-    else:
-        if options.has_key("hg18"): ref = "hg18"
-        elif options.has_key("hg19"): ref = "hg19"
-        elif options.has_key("mm9"): ref = "mm9"
-        elif options.has_key("ref"): ref = options["ref"]
-        sopts["ref"] = find_2bit_file(ref, path_to_gbdb)
-
-    source_count = sum([options.has_key(x) for x in sources])
-    if not source_count == 1:
-        raise Usage("Must specify exactly one of",
-                    " ".join(["".join(["--", x]) for x in sources]))    
-
-    if options.has_key("npeaks"): sopts["npeaks"] = int(options["npeaks"])
-
-    if options.has_key("width"):
-        try: width = int(options["width"])
-        except ValueError: raise Usage("width must be an integer")
-        if not width > 0: raise Usage("width must be a positive integer")
-        if width%2 is 0: width += 1
-        # even intervals are not symmetric, so make them odd by +1
-        sopts["width"] = width
-        sopts["from_center"] = True
-
-    return sopts
 
 def detect_reference(parsed_filename, path_to_gbdb=None):
     # finish
@@ -152,13 +116,15 @@ def write_to_fasta(file_handle, sequence, name=''):
 
 def get_sequences(parsed_filename, from_MACS_subpeaks=True, from_MACS_xls=False,
            from_MACS_bed=False, peaks=False, summits=False,
-           ref=None, width=151, from_center=False, path_to_gbdb=None,
-           sort=False, npeaks=None, bed=False,
+           ref=None, width=None, path_to_gbdb=None, sort=False,
+           npeaks=None, bed=False, logger=None,
            debug = False,
            **kwargs):
+    ref = find_2bit_file(ref, path_to_gbdb)
+    logger = get_logger()
     if from_MACS_subpeaks:
         sort_item = lambda x: int(x[3]) 
-        if from_center:
+        if width is not None:
             center_coord = lambda x: int(x[4]) # the 5th col
             start_coord = lambda x: center_coord(x) - width/2
             end_coord = lambda x: center_coord(x) + width/2 + 1
@@ -167,7 +133,7 @@ def get_sequences(parsed_filename, from_MACS_subpeaks=True, from_MACS_xls=False,
             end_coord = lambda x: int(x[2])
     if from_MACS_xls:
         sort_item = lambda x: int(x[5])
-        if from_center:
+        if width is not None:
             center_coord = lambda x: int(x[1]) + int(x[4]) # start + 5th col
             start_coord = lambda x: center_coord(x) - width/2
             end_coord = lambda x: center_coord(x) + width/2 
@@ -176,7 +142,7 @@ def get_sequences(parsed_filename, from_MACS_subpeaks=True, from_MACS_xls=False,
             end_coord = lambda x: int(x[2]) - 1
     if from_MACS_bed or peaks:
         sort_item = lambda x: float(x[4])
-        if from_center:
+        if width is not None:
             center_coord = lambda x: (int(x[1]) + int(x[2])) / 2
             start_coord = lambda x: center_coord(x) - width/2
             end_coord = lambda x: center_coord(x) + width/2 + 1
@@ -184,8 +150,8 @@ def get_sequences(parsed_filename, from_MACS_subpeaks=True, from_MACS_xls=False,
             start_coord = lambda x: int(x[1])
             end_coord = lambda x: int(x[2])
     if summits:
+        if width is None: raise Usage('--width required for --summits')
         sort_item = lambda x: float(x[4]) 
-        from_center = True # implied logically
         center_coord = lambda x: int(x[1])
         start_coord = lambda x: center_coord(x) - width/2
         end_coord = lambda x: center_coord(x) + width/2 + 1
@@ -200,8 +166,7 @@ def get_sequences(parsed_filename, from_MACS_subpeaks=True, from_MACS_xls=False,
 
     if ref is None:
         ref = detect_reference(parsed_filename, path_to_gbdb)
-    if debug:
-        print_debug("Using", ref, "to extract sequences", "from", 
+    logger.debug("Using", ref, "to extract sequences", "from", 
                     parsed_filename.input_file, "to", output_file)
         
     ref_genome = twobitreader.TwoBitFile(ref)
@@ -209,12 +174,12 @@ def get_sequences(parsed_filename, from_MACS_subpeaks=True, from_MACS_xls=False,
     input_file = open(parsed_filename.input_file, 'rU')
     input_lines = (line.rstrip() for line in input_file)
 
-    if debug: print_debug("Determining chromsome lengths for", ref)
+    logger.debug("Determining chromsome lengths for", ref)
     chrom_lengths = ref_genome.sequence_sizes()
     valid_chroms = chrom_lengths.keys()
 
     if bed: bed_file = open(bed_filename, 'w')
-    if debug: print_debug("Now converting {!s}".format(bed_filename)) 
+    logger.debug("Now converting {!s}".format(bed_filename)) 
     # if we're going to sort, we'll have to hold the list in memory
     num_peaks = 0
     bed_template = "{!s}\t{!s}\t{!s}\tpeak{!s}\t{!s}\t+\n"
@@ -246,14 +211,14 @@ def get_sequences(parsed_filename, from_MACS_subpeaks=True, from_MACS_xls=False,
                 bed_file.write(bed_template.format(*sitem))
 
     if sort:
-        if debug: print_debug("Sorting {!s} peaks".format(num_peaks))
+        logger.debug("Sorting {!s} peaks".format(num_peaks))
         sorted_list = sorted(seq_list, key=operator.itemgetter(4), reverse=True)
         if npeaks is None or num_peaks < npeaks:
             npeaks = num_peaks
-            if debug: print_debug("Writing results for \
+            logger.debug("Writing results for \
 all {!s} peaks".format(npeaks))
         else:
-            if debug: print_debug("Writing results for \
+            logger.debug("Writing results for \
 top {!s} peaks".format(npeaks))
                 
         for x in xrange(npeaks):
@@ -269,25 +234,30 @@ top {!s} peaks".format(npeaks))
 
 
 class FilenameParser(scripter.FilenameParser):
-    def __init__(self, filename, include_width_in_name=False, target_dir=None,
-                 debug=False, *args, **kwargs):
+    def __init__(self, filename, include_width_in_name=False, target=None,
+                 width = None,
+                 from_MACS_subpeaks=False, from_MACS_xls=False,
+                 from_MACS_bed=False, peaks=False, summits=False,
+                 *args, **kwargs):
         fext = os.path.splitext(filename)[1].lstrip(os.extsep)
         if not (fext == 'bed' or fext == 'xls'): raise InvalidFileException
-        if include_width_in_name:
-            target_dir = "peaks_{!s}bp.FASTA".format(kwargs['width'])
-        super(FilenameParser, self).__init__(filename, debug=debug,
-                                             target_dir=target_dir,
+        if target is None:
+            scripter.error('Cannot use width in name, width not specified')
+            if include_width_in_name: target = "peaks_%dbp" % width
+            else: target= 'peaks'
+        super(FilenameParser, self).__init__(filename,
+                                             target=target,
                                              *args, **kwargs)
-        if kwargs['from_MACS_subpeaks']:
+        if from_MACS_subpeaks:
             if not self.input_file.endswith("_subpeaks.bed"):
                 raise InvalidFileException
-        elif kwargs['from_MACS_xls']:
+        elif from_MACS_xls:
             if not self.input_file.endswith("_peaks.xls"):
                 raise InvalidFileException
-        elif kwargs['from_MACS_bed']:
+        elif from_MACS_bed:
             if not self.protoname.endswidth("_peaks.bed"):
                 raise InvalidFileException
-        elif kwargs['peaks'] or kwargs['summits']:
+        elif peaks or summits:
             if not self.file_extension=="bed":
                 raise InvalidFileException
 
