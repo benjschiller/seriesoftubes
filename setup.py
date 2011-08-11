@@ -31,7 +31,7 @@ def main():
 							  'twobitreader>=1.0.4', 'pysam>=0.4'],
 	      packages = ['bioplus', 'seriesoftubes', 'seriesoftubes.converters'],
           scripts = [os.path.join('scripts', x) for x in os.listdir('scripts') 
-                     if not x.startswith('.')]
+                     if not x.startswith('.')],
   	      classifiers = [
 				'Development Status :: 3 - Alpha',
 				'License :: OSI Approved :: Artistic License',
