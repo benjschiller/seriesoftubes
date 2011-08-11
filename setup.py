@@ -32,6 +32,17 @@ def main():
 	      packages = ['bioplus', 'seriesoftubes', 'seriesoftubes.converters'],
           scripts = [os.path.join('scripts', x) for x in os.listdir('scripts') 
                      if not x.startswith('.')]
+  	      classifiers = [
+				'Development Status :: 3 - Alpha',
+				'License :: OSI Approved :: Artistic License',
+				'Intended Audience :: Developers',
+				'Intended Audience :: End Users/Desktop',
+				'Intended Audience :: Science/Research',
+				'Operating System :: MacOS :: MacOS X',
+				'Operating System :: POSIX',
+				'Programming Language :: Python :: 2.7',
+				'Topic :: Scientific/Engineering :: Bio-Informatics'
+				]
 	      )
 if __name__ == '__main__':
 	main()
