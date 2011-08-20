@@ -57,14 +57,14 @@ def main():
                         help='Assume the BED file contains the positions of peak summits')
     parser.add_argument('--path-to-gbdb',
 help='Location of "gdbdb" or 2bit files. If gbdb is not in /gbdb or C:\gbdb, specify the path here')
-    ggroup = parser.add_mutually_exclusive_group('required=True')
-    ggroup.add('--ref',
+    ggroup = parser.add_mutually_exclusive_group(required=True)
+    ggroup.add_argument('--ref',
                help='Use 2bit file foo as reference genome (Looks also for {path-to-gbdb}/foo/foo.2bit))')
-    ggroup.add('--hg18', const='hg18', action='store_const',
+    ggroup.add_argument('--hg18', const='hg18', action='store_const',
                help='Shortcut for --ref hg18') 
-    ggroup.add('--hg19', const='hg19', action='store_const',
+    ggroup.add_argument('--hg19', const='hg19', action='store_const',
                help='Shortcut for --ref hg19') 
-    ggroup.add('--mm9', const='mm9', action='store_const',
+    ggroup.add_argument('--mm9', const='mm9', action='store_const',
                help='Shortcut for --ref mm9') 
     parser.add_argument('--width', type=positive_int,
                         help="""Get sequence x distance from the peak center/summit
