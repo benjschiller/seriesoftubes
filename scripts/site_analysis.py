@@ -18,14 +18,15 @@ VERSION = __version__
 
 def main():
     e = scripter.Environment(doc=__doc__, version=VERSION)
-    parser = e.argument_parser
-    parser.add_argument('--motif', required=True,
-                        help='Path to file containing motif')
-    parser.add_argument('--motif-number',
-                        help='Motif number within file (e.g. 1, 2, 3) [Default is to assume only one motif in file]')
-    parser.add_argument('--motif-type', default='MEME',
-                        help='motif type (see Bio.Motif for more info)')
     e.set_filename_parser(FilenameParser)
+    parser = e.argument_parser
+    parser.add_argument('--motif', required=True, dest='motif_file',
+                        help='Path to file containing motif')
+    parser.add_argument('--motif-number', type=int,
+                        help='Motif number within file (e.g. 1, 2, 3) [Default is to assume only one motif in file]')
+    parser.add_argument('--motif-type', default='MEME', 
+                        help='motif type (see Bio.Motif for more info)')
+    parser.set_defaults(**{'target': 'analysis'})
     e.do_action(action)
    
 def get_motif(foo, motif_number, motif_type):
@@ -47,7 +48,7 @@ def action(fp_obj, motif_file=None, motif_type=None, motif_number=1,
     logger = get_logger()
     logger.debug("trying to find sites for",
                           fp_obj.input_file)
-    motif = get_motif(motif_file, motif_type, motif_type)
+    motif = get_motif(motif_file, motif_number, motif_type)
     stdout_buffer = find_sites(fp_obj.input_file,
                                fp_obj.fasta_file,
                                motif, bed=fp_obj.is_bed, xls=fp_obj.is_xls,
@@ -58,10 +59,10 @@ def action(fp_obj, motif_file=None, motif_type=None, motif_number=1,
 
 class FilenameParser(scripter.FilenameParser):
     def __init__(self, filename, include_width_in_name=False,
-                 target_dir=None, motif_file='unknown_motif',
+                 target=None, motif_file='unknown_motif',
                  *args, **kwargs):
         fext = os.path.splitext(filename)[1].lstrip(os.extsep)
-        if not fext == 'bed':
+        if fext == 'bed':
             self.is_bed = True
             self.is_xls = False
         elif fext == 'xls':
@@ -69,9 +70,9 @@ class FilenameParser(scripter.FilenameParser):
             self.is_xls = True
         else: raise InvalidFileException
         motif_name = re.sub('\W', '_', os.path.abspath(motif_file))
-        target_dir = target_dir + os.sep + motif_name
+        target = target + os.sep + motif_name
         super(FilenameParser, self).__init__(filename,
-                                             target_dir = target_dir,
+                                             target = target,
                                              *args, **kwargs)
         self.fasta_file = None
         for file_extension in ['fa', 'fasta', 'FA', 'FASTA']:

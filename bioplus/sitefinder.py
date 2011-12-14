@@ -80,7 +80,7 @@ def search_peak(peak_ID, peak, peakseq, motif, debug=False):
     a list of info about sites (motif matches)
     a list of BED rows for sites
     '''
-    
+   
     clean_peak_seq = _clean_sequence(peakseq)
     clean_peak_length = len(clean_peak_seq)
 
@@ -240,8 +240,8 @@ Site (1) chr (2) start (3) end
                                  "\t".join(sites_cols), ''])
     sites_info.write(sites_msg)
 
-    if bed: peak_generator = (peak for peak in BedFile(peaks_file))
-    elif xls: peak_generator = (peak for peak in MacsFile(peaks_file))
+    if bed: peak_generator = BedFile(peaks_file)
+    elif xls: peak_generator = MacsFile(peaks_file)
     else: raise ValueError('Neither bed nor xls')
     # peakSeqs is a generator
     peak_seqs = (r.seq for r in Bio.SeqIO.parse(open(fasta_file, 'rU'),
