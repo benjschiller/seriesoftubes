@@ -45,7 +45,8 @@ def main():
     parser.add_argument('--path-to-samtools', nargs='?',
                         default=path_to_executable('samtools', '/usr/local/samtools*'),
                         help='The path to the samtools executable')
-    parser.add_argument('--references', '--ref', nargs='*',
+    # fix aliases elsewhere
+    parser.add_argument('--references', aliases=['--ref'], nargs='*',
                         default=['hg19', 'hg18'],
                         help='Reference genomes to align against (requires the appropriate bowtie index)',
                         )
