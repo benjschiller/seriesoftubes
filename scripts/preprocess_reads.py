@@ -24,6 +24,7 @@ from itertools import imap, izip, chain
 from functools import partial
 import scripter
 from seriesoftubes.converters.discover import discover_file_format
+from seriesoftubes.fnparsers.illumina import BarcodeFilenameParser
 from Bio.SeqIO.QualityIO import FastqGeneralIterator
 from ConfigParser import SafeConfigParser
 from errno import ENOENT, EACCES
