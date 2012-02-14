@@ -513,24 +513,4 @@ def cleave_3prime_linker(record, linker='', verbose=False, **kwargs):
     else:
         return (barcode, (title, seq[0:linker_index], qual[0:linker_index]))
 
-#def reduce_counts():
-#    if debug:
-#        stdout_buffer = 'Determining basewise error rates in {!s}\n'.format(
-#                                                    parsed_filename.input_file)
-#    else: stdout_buffer = ''
-#    counter = lambda x: (x == 'A', x =='T', x == 'G', x == 'C', x == 'N')
-#    seqs = imap(str.upper, imap(itemgetter(1), records))
-#    reducto = reduce(add, izip(imap(counter, seqs)))
-#            
-#    f = open(output_filename, 'w')
-#    first_row = ("cycle", "pyindex", "A", "T", "G", "C", "N")
-#    f.write('\t'.join(["{!s}"]*6).format(*first_row))
-#    counts = list(counts)
-#    for i in range(count_len):
-#        row = (i+2, i, counts[i][0], counts[i][1], counts[i][2], counts[i][3],
-#               counts[i][4])
-#        f.write('\t'.join(["{!s}"]*6).format(*row))
-#    f.close()
-#    return stdout_buffer
-
 if __name__== "__main__": main()
