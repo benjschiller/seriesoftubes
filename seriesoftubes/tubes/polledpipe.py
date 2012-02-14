@@ -1,7 +1,7 @@
 import select
 import os
 import logging
-
+import platform
 if platform.system() == 'Windows':
     raise RuntimeError("""Microsoft Windows is not and will not be supported.
 This is due to an underlying design problem in the OS.

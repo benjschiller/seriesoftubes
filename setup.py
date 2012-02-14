@@ -29,7 +29,8 @@ def main():
 	      author_email='benjamin.schiller@ucsf.edu',
           requires = ['scripter (>=2.9.0, <3.0)', 'biopython (>=1.56)',
 							  'twobitreader (>=1.0.4)', 'pysam (>=0.4)'],
-	      packages = ['bioplus', 'seriesoftubes', 'seriesoftubes.converters'],
+	      packages = ['bioplus', 'seriesoftubes', 'seriesoftubes.converters',
+					  'seriesoftubes.fnparsers', 'seriesoftubes.tubes'],
           scripts = [os.path.join('scripts', x) for x in os.listdir('scripts') 
                      if not x.startswith('.')],
   	      classifiers = [
