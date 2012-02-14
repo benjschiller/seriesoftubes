@@ -12,6 +12,7 @@ from os.path import exists
 import platform
 import subprocess
 import scripter
+import pysam
 from scripter import Environment, FilenameParser, InvalidFileException, \
                      path_to_executable, get_logger
 from pkg_resources import get_distribution
@@ -23,7 +24,10 @@ def main():
     e = Environment(doc=__doc__, version=VERSION)
     parser = e.argument_parser
     parser.add_argument('--path-to-macs',
-                        default=path_to_executable(["macs14", "macs14.py", "macs"]))
+                        default=path_to_executable(["macs2",
+                                                    "macs14",
+                                                    "macs14.py",
+                                                    "macs"]))
     parser.add_argument('--path-to-R',
                         default=path_to_executable(["R64", "R"]))
     parser.add_argument('--no-wig', dest='wig', action='store_false',
@@ -121,7 +125,54 @@ def _join_opt(a,b):
     '''
     return '='.join([a,b])
 
-def run_macs(parsed_filename,
+def run_macs(*args, **kwargs):
+    if os.path.basename(kwargs['path_to_macs'])=='macs2':
+        return run_macs2(*args, **kwargs)
+    else:
+        return run_macs14(*args, **kwargs)
+    
+def run_macs2(parsed_filename, logging_level=10, **kwargs):
+    logger = get_logger(logging_level)
+    input_file = parsed_filename.input_file
+    control_file = parsed_filename.control_file
+
+    # See if we have paired-end files
+    s = pysam.Samfile(input_file)
+    is_paired = [s.next().is_paired for i in xrange(100000)]
+    if control_file is not None:
+        t = pysam.Samfile(control_file)
+        is_paired_control = [s.next().is_paired for i in xrange(100000)]
+    else:
+        is_paired_control = [True]
+    if all(is_paired + is_paired_control):
+        logger.warn('Detected paired end files')
+        logger.debug('Checking for pybedtools')
+        try:
+            import pybedtools
+            run_macs2_with_bedgraph(parsed_filename, **kwargs)
+        except ImportError:
+            logger.error('pybedtools is not installed. Falling back on MACS fixed-width track features')
+            run_macs2_alone(parsed_filename, **kwargs)
+    else:
+        run_macs2_alone(parsed_filename, **kwargs)
+    return
+
+def run_macs2_with_bedgraph(parsed_filename, logger=None, **kwargs):
+    raise NotImplementedError
+    if logger is None: raise ValueError('No logger specified')
+    input_file = parsed_filename.input_file
+    control_file = parsed_filename.control_file
+    b = pybedtools.BedTool(input_file)
+    bedgraph = b.genome_coverage(genome='hg19')
+    if control_file is not None:
+        c = pybedtools.BedTool(input_file)
+        bedgraph2 = c.genome_coverage(genome='hg19')
+    return
+
+def run_macs2_alone(parsed_filename, logger=None, **kwargs):
+    raise NotImplementedError
+
+def run_macs14(parsed_filename,
            wig=True, single_wig=True, diag=True, subpeaks=True,
            make_pdf=True, fix_only=False, fix=True, 
            path_to_macs=None, path_to_R=None, logging_level=10,

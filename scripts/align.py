@@ -9,25 +9,18 @@ In reference folder, there will be a folder for unique or random alignments
     (unique means only maps to one spot, random is maq-like behavior)
     e.g. align/ref1/random, align/ref1/unique, etc.
 """
-import gzip
-import bz2
 import pysam
 import logging
 import os
-import platform
-import select
 import sys
-import time
 from subprocess import Popen, PIPE
 import scripter
 from scripter import assert_path, path_to_executable, Usage, \
                      exit_on_Usage, InvalidFileException, get_logger, \
-                     Environment, FilenameParser
-
-if platform.system() == 'Windows':
-    raise RuntimeError("""Microsoft Windows is not and will not be supported.
-This is due to an underlying design problem in the OS.
-Use cygwin if you need to run this on Windows.""")
+                     Environment
+from seriesoftubes.tubes.polledpipe import PolledPipe
+from seriesoftubes.tubes import wait_for_job
+from seriesoftubes.fnparsers import BowtieFilenameParser
     
 from pkg_resources import get_distribution
 __version__ = get_distribution('seriesoftubes').version
@@ -70,59 +63,6 @@ def main():
     e.do_action(align)
 
         
-class PolledPipe(object):
-    """
-    A PolledPipe object has two attributes
-    r - pipe read file descriptor
-    w - pipe write file descriptor
-    and three methods
-    poll() -- poll the read end of the pipe
-    readlines() -- read availble lines if the poll says the pipe is ready
-    log(level=logging.error) -- emit the result of readline (if not None)
-    
-    a select.poll() object has r registered to it
-    """
-    def __init__(self, logger=None, level=None):
-        self._logger = logger
-        self._level = level
-        r, w = os.pipe()
-        self.r = r
-        self._r_file = os.fdopen(r, 'r', 0)
-        self.w = w
-        self._poll = select.poll()
-        self._poll.register(r)
-        return
-    
-    def poll(self, timeout=0):
-        self._poll.poll(timeout)
-        
-    def readlines(self, timeout=0):
-        results = self.poll(timeout)
-        if results is None: raise StopIteration
-        for result in results:
-            event = result[1]
-            if (event & select.POLLERR) == select.POLLERR:
-                raise IOError('Something went wrong trying to read from a pipe')
-            elif (event & select.POLLNVAL) == select.POLLNVAL:
-                raise IOError('Invalid request: descriptor for pipe not open')
-            elif (event & select.POLLHUP) == select.POLLHUP:
-                raise IOError('Pipe file descriptor already hung up')
-            elif (event & select.POLLIN) == select.POLLIN or \
-                 (event & select.POLLPRI) == select.POLLPRI:
-                yield self._r_file.readline()
-        raise StopIteration
-    
-    def log(self, level=None):
-        """
-        emit the results of readlines
-        """
-        if self._logger is None:
-            raise RuntimeWarning('PolledPipe did not have a logger attached')
-        if level is None: level = self._level
-        if level is None: level = logging.ERROR
-        for line in self.readlines():
-            self._logger.log(level, line)
-        return
 
 @exit_on_Usage
 def align(fp_obj, references=[], random=True, unique=True, max_quality='70',
@@ -272,135 +212,5 @@ def align_once(fp_obj, flags, ref, match_type, use_quality=False,
     # Make sure indexing succeeds
     assert_path(os.path.join(output_dir, bam_file + '.bam.bai'))
     return
-
-def wait_for_job(job, logs=[], logger=None):
-    otime = time.time()
-    while True:
-        atime = time.time()
-        if otime - atime > 60 and logger is not None:
-            logger.debug('Still running')
-        otime = atime
-        time.sleep(3)
-        if job.poll() is not None: break
-        for log in logs: log.log()
-    for log in logs: log.log()
-
-def get_pair_info(illumina_name):
-    """
-    take a filename from GERALD output and figure out whether it's the first
-    or second read (or single-end read) and return a tuple
-    (pair_index, second_file_name, new_output_name)
-    """
-    name_parts = illumina_name.split('.')
-    for i in range(len(name_parts)):
-        part = name_parts[i]
-        subparts = part.split('_') 
-        if len(subparts) > 0:
-            if subparts[0] == 's':
-                if len(subparts) == 1: continue
-                pair_index = subparts[2]
-                # lane = subparts[1]
-                if pair_index == '1':
-                    join_part = '_'.join(subparts[0:2] + subparts[3:])
-                    new_output_name = '.'.join(name_parts[0:i] + [join_part] +\
-                                                name_parts[i+1:])
-                    second_part = '_'.join(subparts[0:2] + ['2'] + subparts[3:])
-                    second_name = '.'.join(name_parts[0:i] + [second_part] + 
-                                           name_parts[i+1:])
-                    return (pair_index, second_name, new_output_name)
-                elif pair_index == '2':
-                    raise InvalidFileException
-                    return
-    return None
-
-class BowtieFilenameParser(FilenameParser):
-    def __init__(self, filename, *args, **kwargs):
-        super(BowtieFilenameParser, self).__init__(filename, *args, **kwargs)
-        compression, format = self.discover_file_format2(filename)
-        if format == 'SAM' or format == 'BAM':
-            self.use_pysam = True
-            # try to open the file so we're sure it works
-            f = pysam.Samfile(filename)
-            del f
-        elif format == 'FASTQ':
-            self.use_pysam = False
-            self.compression = compression
-        else:
-            raise RuntimeError('Dubious file format')
-        self.second_file = None
-        self.check_paired_end()
-        if len(self.protoname.split('.')) > 6:
-            self.fastq_source = self.protoname.split('.')[6]
-        else:
-            self.fastq_source = 'Unknown'
-    
-    @staticmethod
-    def discover_file_format2(filename):
-        f = open(filename, 'rb')
-        head = f.read(3)
-        f.close()
-        # check magic words for compression
-        if head == '\x1f\x8b\x08':
-            compression = 'gz'
-            open_func = gzip.GzipFile
-        elif head=='\x42\x5a\x68':
-            open_func = bz2.BZ2File
-            compression = 'bz2'
-        else:
-            open_func = open
-            compression = 'none'
-        uncompressed = open_func(filename)
-        head2 = uncompressed.read(4)
-        # check for BAM
-        if head2 == 'BAM\x01': return (compression, 'BAM')
-        # check for SAM 
-        head2b = uncompressed.readline()
-        if head2 == '@HD\t':
-            if head2b[0:3] == 'VN:': return (compression, 'SAM')
-        # check FASTQ
-        title = head2 + head2b
-        seq = uncompressed.readline()
-        title2 = uncompressed.readline()
-        qual = uncompressed.readline()
-        if len(seq) == len(qual) and \
-           (title.startswith('@') or title2.startswith('+')) and \
-           (title2[1:].strip() == '' or title[1:] == title2[1:]):
-            return (compression, 'FASTQ')
-        # otherwise give up
-        else: return (None, None)
-            
-    def check_paired_end(self):
-        # check if this is a paired-end file
-        # if so, grab its partner
-        seqfile_name = os.path.basename(self.input_file)
-        pair_info = get_pair_info(seqfile_name)
-        if pair_info is not None:
-            pair_index = pair_info[0]
-            second_name = pair_info[1]
-            new_name = pair_info[2]
-            scripter.debug('NOTICE: Detected paired read file.')
-            if pair_index == '1':
-                scripter.debug('Attempting to find second file.')
-
-                self.second_file = os.sep.join([self.input_dir, second_name])
-                self.protoname = os.path.splitext(new_name)[0]
-                scripter.debug('Found %s', self.second_file)
-                try:
-                    assert_path(self.second_file)
-                    self.paired_end = True
-                except IOError:
-                    scripter.debug('Failed to find paired end file')
-                    self.paired_end = False
-            elif pair_index == '2':
-                scripter.debug('This is the second file, ignoring it.')
-                raise InvalidFileException
-            else:
-                scripter.debug('Failed to find paired end')
-                self.paired_end = False
-        else: self.paired_end = False
-
-    def tmp_filename(self, ref, match_type):
-        return os.path.join(self.output_dir, ref, match_type,
-                                       self.with_extension('tmp'))
 
 if __name__=="__main__": main()
