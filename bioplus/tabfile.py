@@ -605,27 +605,33 @@ class MacsRow(list):
         '''returns the position of the summit'''
         return int(self[4])
 
-    def tags(self):
+    def tags(self, type_=int):
         '''returns the number of unique tags in the peak region'''
-        return int(self[5])
+        return type_(self[5])
+    
+    def tagsv1(self):
+        return self.tags(int)
+    
+    def tagsv2(self):
+        return self.tags(lambda x: int(float(x)))
 
-    def pvalue(self,type=str):
+    def pvalue(self,type_=str):
         '''returns the -10*log10(pvalue). preserves the str to eliminate rounding error. use type=float to get a decimal value'''
-        return type(self[6])
+        return type_(self[6])
 
     def fold_enrichment(self,type=str):
         '''returns the fold_enrichment vs control. preserves the str to eliminate rounding error. use type=float to get a decimal value'''
         return type(self[7])
 
-    def FDR(self,type=str):
+    def FDR(self,type_=str):
         '''returns the FDR (%). preserves the str to eliminate rounding error. use type=float to get a decimal value'''
-        return type(self[8])    
+        return type_(self[8])    
 
 class MacsFile(TabFile):
     '''A MACS file is a type of TabFile, but also defines a method for working with rows. rows are given as instances of MACSRow, instead of lists. MACSrows inerhit all list methods and therefore are compatible with write_row. MacsRow has additional methods for chrom, chromStart, chromEnd, etc. For more info, see MacsRow'''
 
     def __init__(self, f, convert_spaces=True, **kwargs):
-        super(MacsFile, self).__init__(self, f, column_names=True, **kwargs)
+        super(MacsFile, self).__init__(f, column_names=True, **kwargs)
 
     def __iter__(self):
         '''returns the next (or first) line that is not a comment, parsed'''

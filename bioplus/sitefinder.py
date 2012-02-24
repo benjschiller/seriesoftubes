@@ -105,7 +105,10 @@ def search_peak(peak_ID, peak, peakseq, motif, debug=False):
     try: peak_center = peak.summit()
     except AttributeError: peak_center = clean_peak_length / 2
 
-    try: peak_intensity = peak.tags()
+    try:
+        peak_intensity = peak.tagsv1()
+    except ValueError:
+        peaks_intensity = peak.tagsv2()
     except AttributeError: peak_intensity = 'NA'
 
     try: peak_misc = peak.misc()

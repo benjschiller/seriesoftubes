@@ -24,7 +24,7 @@ from itertools import imap, izip, chain
 from functools import partial
 import scripter
 from seriesoftubes.converters.discover import discover_file_format
-from seriesoftubes.fnparsers.illumina import BarcodeFilenameParser
+from seriesoftubes.fnparsers import BarcodeFilenameParser
 from Bio.SeqIO.QualityIO import FastqGeneralIterator
 from ConfigParser import SafeConfigParser
 from errno import ENOENT, EACCES
@@ -108,9 +108,9 @@ def read_config(setup_file):
 
 def match_barcode(seq, barcodes, mismatches=1):
     """
-    try to match seq to a list barcodes
+    try to match seq to a list of barcodes
     allow mismatches (default 1)
-    returns the match (not seq) or None
+    returns the match (from barcodes) or None
     """
     accepted = None
     ne = str.__ne__

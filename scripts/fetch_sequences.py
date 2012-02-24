@@ -34,8 +34,6 @@ def main():
     parser = e.argument_parser
     parser.add_argument('--include-width-in-name', action='store_true',
                         help='Include width in directory name for output (e.g. peaks_150.FASTA)')
-    parser.add_argument('--bed', action='store_true',
-                        help='Make a BED file too saying where sequences come from')
     parser.add_argument('--sort', action='store_true',
                         help="""Sort peaks if possible by
     number of reads under peak (MACS-xls)
@@ -48,6 +46,8 @@ def main():
                         help='Fetch the peaks from MACS _subpeaks.bed '
                         '(uses the summit position in column 4)')
     sgroup.add_argument('--from-MACS-xls', action='store_true',
+                        help='Fetch peaks from MACS _peaks.xls')
+    sgroup.add_argument('--from-MACS2-xls', action='store_true',
                         help='Fetch peaks from MACS _peaks.xls')
     sgroup.add_argument('--from-MACS-bed', action='store_true',
                         help='Fetch peaks from MACS _peaks.bed')
@@ -115,6 +115,7 @@ def write_to_fasta(file_handle, sequence, name=''):
     return
 
 def get_sequences(parsed_filename, from_MACS_subpeaks=True, from_MACS_xls=False,
+                  from_MACS2_xls=False,
            from_MACS_bed=False, peaks=False, summits=False,
            ref=None, width=None, path_to_gbdb=None, sort=False,
            npeaks=None, bed=False, logger=None,
@@ -131,8 +132,8 @@ def get_sequences(parsed_filename, from_MACS_subpeaks=True, from_MACS_xls=False,
         else:
             start_coord = lambda x: int(x[1])
             end_coord = lambda x: int(x[2])
-    if from_MACS_xls:
-        sort_item = lambda x: int(x[5])
+    elif from_MACS_xls:
+        sort_item = lambda x: int(x[5].split('.')[0])
         if width is not None:
             center_coord = lambda x: int(x[1]) + int(x[4]) # start + 5th col
             start_coord = lambda x: center_coord(x) - width/2
@@ -140,7 +141,16 @@ def get_sequences(parsed_filename, from_MACS_subpeaks=True, from_MACS_xls=False,
         else:
             start_coord = lambda x: int(x[1])
             end_coord = lambda x: int(x[2]) - 1
-    if from_MACS_bed or peaks:
+    elif from_MACS2_xls:
+        sort_item = lambda x: int(x[5].split('.')[0])
+        if width is not None:
+            center_coord = lambda x: int(x[4]) # start + 5th col
+            start_coord = lambda x: center_coord(x) - width/2
+            end_coord = lambda x: center_coord(x) + width/2 
+        else:
+            start_coord = lambda x: int(x[1])
+            end_coord = lambda x: int(x[2]) - 1
+    elif from_MACS_bed or peaks:
         sort_item = lambda x: float(x[4])
         if width is not None:
             center_coord = lambda x: (int(x[1]) + int(x[2])) / 2
@@ -149,7 +159,7 @@ def get_sequences(parsed_filename, from_MACS_subpeaks=True, from_MACS_xls=False,
         else:
             start_coord = lambda x: int(x[1])
             end_coord = lambda x: int(x[2])
-    if summits:
+    elif summits:
         if width is None: raise Usage('--width required for --summits')
         sort_item = lambda x: float(x[4]) 
         center_coord = lambda x: int(x[1])
@@ -160,7 +170,7 @@ def get_sequences(parsed_filename, from_MACS_subpeaks=True, from_MACS_xls=False,
     output_file = os.path.join(parsed_filename.output_dir,
                                os.extsep.join([parsed_filename.protoname,
                                                'fa']))
-    if bed: bed_filename = os.path.join(parsed_filename.output_dir,
+    bed_filename = os.path.join(parsed_filename.output_dir,
                                 os.extsep.join([parsed_filename.protoname,
                                                 'bed']))
 
@@ -177,8 +187,10 @@ def get_sequences(parsed_filename, from_MACS_subpeaks=True, from_MACS_xls=False,
     logger.debug("Determining chromsome lengths for", ref)
     chrom_lengths = ref_genome.sequence_sizes()
     valid_chroms = chrom_lengths.keys()
+    for chrom, length in chrom_lengths.items():
+        logger.debug('%s has length %d', chrom, length)
 
-    if bed: bed_file = open(bed_filename, 'w')
+    bed_file = open(bed_filename, 'w')
     logger.debug("Now converting {!s}".format(bed_filename)) 
     # if we're going to sort, we'll have to hold the list in memory
     num_peaks = 0
@@ -190,12 +202,21 @@ def get_sequences(parsed_filename, from_MACS_subpeaks=True, from_MACS_xls=False,
         # determine chrom/contig
         chrom = words[0].lower()
         # skip if not a valid contig/chrom
-        if not chrom in valid_chroms: continue
+        if not chrom in valid_chroms:
+            # try to fix the chrom
+            for alt_chrom in fix_chrom(chrom):
+                logger.debug('Trying %s instead of %s', alt_chrom, chrom)
+                if alt_chrom in valid_chroms: chrom = alt_chrom
+            if not chrom in valid_chroms:
+                logger.warn('Warning: %s is not a valid chromosome', chrom)
+                continue
         # determine start and end
         start = start_coord(words)
         end = end_coord(words)
         # skip if we've already fallen off the chromosome
-        if int(start) > chrom_lengths[chrom]: continue
+        if int(start) > chrom_lengths[chrom]:
+            logger.warn('start %d > chrom len %d', start, chrom_lengths[chrom])
+            continue
         # truncate chrom start for MACS
         num_peaks += 1
         start = max(int(start), 0)
@@ -207,8 +228,7 @@ def get_sequences(parsed_filename, from_MACS_subpeaks=True, from_MACS_xls=False,
         else:
             sequence = ref_genome[chrom][start:end]
             write_to_fasta(output_handle, sequence, name=name)
-            if bed:
-                bed_file.write(bed_template.format(*sitem))
+            bed_file.write(bed_template.format(*sitem))
 
     if sort:
         logger.debug("Sorting {!s} peaks".format(num_peaks))
@@ -226,12 +246,24 @@ top {!s} peaks".format(npeaks))
             chrom, start, end = sitem[0:3]
             sequence = ref_genome[chrom][start:end]
             write_to_fasta(output_handle, sequence, name=sitem[3])
-            if bed: bed_file.write(bed_template.format(*sitem))
+            bed_file.write(bed_template.format(*sitem))
             
     output_handle.close()
-    if bed: bed_file.close()
+    bed_file.close()
     return
 
+def fix_chrom(chrom):
+    """
+    give plausible alternative chromosome names
+    """
+    alt_chroms = []
+    if chrom.startswith("chr"):
+        number = chrom[3:]
+        if number.isalpha():
+            alt_chroms.append('chr' + number.lower())
+            alt_chroms.append('chr' + number.upper())
+    return alt_chroms
+        
 
 class FilenameParser(scripter.FilenameParser):
     def __init__(self, filename, include_width_in_name=False, target=None,

@@ -13,12 +13,32 @@ import platform
 import subprocess
 import scripter
 import pysam
-from scripter import Environment, FilenameParser, InvalidFileException, \
-                     path_to_executable, get_logger
-from pkg_resources import get_distribution
+from scripter import Environment, path_to_executable, get_logger
+from seriesoftubes.fnparsers import AlignmentsFilenameParser
+from pkg_resources import get_distribution, VersionConflict
 __version__ = get_distribution('seriesoftubes').version
 VERSION = __version__
 TARGET_DIR = 'peaks'
+
+def enforce_MACS_version():
+    """
+    Make sure we MACS > v1.4.1 and/or >v2.0
+    """
+    v1 = None
+    v2 = None
+    try:
+        v1 = get_distribution('MACS>=1.4.1,<2').version
+    except VersionConflict:
+        pass
+    try:
+        v2 = get_distribution('MACS>2').version
+    except VersionConflict:
+        pass
+    if v1 is None and v2 is None:
+        raise VersionConflict()
+    return v1, v2
+
+#MACS_VERSION1, MACS_VERSION2 = check_MACS_version()  
 
 def main():
     e = Environment(doc=__doc__, version=VERSION)
@@ -27,9 +47,12 @@ def main():
                         default=path_to_executable(["macs2",
                                                     "macs14",
                                                     "macs14.py",
-                                                    "macs"]))
+                                                    "macs"]),
+                        help="optional path to macs executable (macs2 will be \
+used if found")
     parser.add_argument('--path-to-R',
-                        default=path_to_executable(["R64", "R"]))
+                        default=path_to_executable(["R64", "R"]),
+                        help="optional path to R executable")
     parser.add_argument('--no-wig', dest='wig', action='store_false',
                         default=True,
                         help='do not generate wiggle files (also disable subpeaks')
@@ -41,15 +64,13 @@ def main():
     parser.add_argument('--no-subpeaks', dest='subpeaks', action='store_false',
                         default=True,
                         help='do not call subpeaks with PeakSplitter')
-    parser.add_argument('--no-pdf', dest='make_pdf', action='store_false', default=True,
-                        help='do not generate a pdf of the model using R')
     g = parser.add_mutually_exclusive_group()
     g.add_argument('--no-fix', dest='fix', action='store_false', default=True,
                    help='do not auto-fix subpeaks filename')
     g.add_argument('--fix-only', action='store_true', default=True,
                    help='only fix subpeaks filename, do nothing else')
-    e.set_target_dir(TARGET_DIR)
-    e.set_filename_parser(MacsFilenameParser)
+    parser.set_defaults(**{'target': 'peaks'})
+    e.set_filename_parser(AlignmentsFilenameParser)
     e.set_config_reader(read_setup_file)
     e.set_config_writer(write_setup_file)
     e.do_action(run_macs, stay_open=True)
@@ -83,38 +104,6 @@ def read_setup_file(setup_file):
             controls[sample] = (name, control)
         return controls
             
-
-class MacsFilenameParser(FilenameParser):
-    def __init__(self, filename, controls = {}, *args, **kwargs):
-        if not os.path.splitext(filename)[1] == '.bam':
-            raise InvalidFileException(filename)
-        super(MacsFilenameParser, self).__init__(filename, *args, **kwargs)
-        
-        sample = self.protoname
-        # check controls
-        if controls.has_key(sample):
-            run_name, control = controls[sample]
-            scripter.debug('%s has control %s', sample, control)
-            if control is None:
-                self.control_file = None
-            else:
-                self.control_file = os.path.join(self.input_dir,
-                                                 control + '.bam')
-        elif sample in [v[1] for v in controls.values()]:
-            scripter.debug('%s is a control, aborting', sample)
-            raise InvalidFileException
-        else:
-            scripter.debug('%s has no control indicated, continuing anyway',
-                           sample)
-            # not in setup.txt, make an entry in controls
-            self.control_file = None
-            run_name = sample
-            controls[sample] = (sample, None)
-            
-        self.run_name = run_name  
-        self.output_dir = os.path.join(self.output_dir, run_name)
-        self.check_output_dir(self.output_dir)
-
 def _prepend_cwd(d):
     '''prepends the current working directory to a directory d'''
     return os.path.join(os.getcwd(), d)
@@ -132,6 +121,7 @@ def run_macs(*args, **kwargs):
         return run_macs14(*args, **kwargs)
     
 def run_macs2(parsed_filename, logging_level=10, **kwargs):
+    raise NotImplementError
     logger = get_logger(logging_level)
     input_file = parsed_filename.input_file
     control_file = parsed_filename.control_file
@@ -157,24 +147,9 @@ def run_macs2(parsed_filename, logging_level=10, **kwargs):
         run_macs2_alone(parsed_filename, **kwargs)
     return
 
-def run_macs2_with_bedgraph(parsed_filename, logger=None, **kwargs):
-    raise NotImplementedError
-    if logger is None: raise ValueError('No logger specified')
-    input_file = parsed_filename.input_file
-    control_file = parsed_filename.control_file
-    b = pybedtools.BedTool(input_file)
-    bedgraph = b.genome_coverage(genome='hg19')
-    if control_file is not None:
-        c = pybedtools.BedTool(input_file)
-        bedgraph2 = c.genome_coverage(genome='hg19')
-    return
-
-def run_macs2_alone(parsed_filename, logger=None, **kwargs):
-    raise NotImplementedError
-
 def run_macs14(parsed_filename,
            wig=True, single_wig=True, diag=True, subpeaks=True,
-           make_pdf=True, fix_only=False, fix=True, 
+           fix_only=False, fix=True, 
            path_to_macs=None, path_to_R=None, logging_level=10,
            **kwargs):
     """Run MACS on a BAM file and produce the pdf from the .R model"""
@@ -191,7 +166,7 @@ def run_macs14(parsed_filename,
     macs_options = ['--format=BAM']
     if wig:
         macs_options.append('--wig')
-        if single_wig: macs_options.append('--single-wig')
+        if single_wig: macs_options.append('--single-profile')
         if subpeaks: macs_options.append('--call-subpeaks')
     if diag: macs_options.append('--diag')
     run_name = '_'.join(parsed_filename.run_name.split())
