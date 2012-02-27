@@ -1,3 +1,9 @@
+"""
+requires genome.db from bioplus, an sqlite3 database w/ the following structure:
+tables are named according to genome name
+each table has fields VARCHAR 'name' and INT UNSIGNED 'length' 
+  which describes the chromosomes/scaffolds in a genome
+"""
 from pysam import Samfile
 from pkg_resources import resource_filename, cleanup_resources
 import sqlite3
@@ -12,12 +18,33 @@ def _populate_available_genomes():
 
 AVAILABLE_GENOMES = _populate_available_genomes()
 
+def import_db(db, replace=False, ignore_warnings=False):
+    '''
+    imports a db like genome.db into the existing database
+    
+    note: this may not be persistent if your egg is zipped
+    '''
+    connection = sqlite3.connect(db)
+    name_tuples = connection.execute("select name from sqlite_master WHERE type='table'").fetchall()
+    available_genomes = map(itemgetter(0), name_tuples)
+    for genome_name in available_genomes:
+        if not ignore_warnings:
+            assert genome_name in AVAILABLE_GENOMES and not replace, \
+                "Genome %s already in database" % genome_name
+        _CONNECTION.execute("create table %s (name VARCHAR, length INT UNSIGNED)" % 
+                            genome_name)
+        dict(connection.execute("select * from %s" % genome_name))
+        _CONNECTION.executemany("insert into %s values (?,?)" % 
+                                genome_name, dict(genome_dict).items())
+    return
+
 def add_genome(genome_name, genome_dict, replace=False):
     """
     WARNING: THIS WILL PERMANENTLY ADD A GENOME
     
     make a call to pybedtool and tries to add to genome registry
     then reloads module and repopulates globals    
+    note: this may not be persistent if your egg is zipped
     """
     assert genome_name in AVAILABLE_GENOMES and not replace, "Genome %s already in database" % genome_name
     _CONNECTION.execute("create table %s (name VARCHAR, length INT UNSIGNED)" % 
@@ -52,8 +79,8 @@ def genome_from_bam(bam_file_or_filename):
     if isinstance(bam_file_or_filename, Samfile):
         bam_file = bam_file_or_filename
     else:
-        bam_file = Samfile('bam_file_or_filename')
-    return dict(zip(sam.references, sam.lengths))
+        bam_file = Samfile(bam_file_or_filename)
+    return dict(zip(bam_file.references, bam_file.lengths))
 
 def guess_genome(genome1):
     """
@@ -63,7 +90,7 @@ def guess_genome(genome1):
     """
     for name in AVAILABLE_GENOMES:
         genome2 = genome(name)
-        if matches(genome1, genome2): return name
+        if matches_genome(genome1, genome2): return name
     raise NoMatchFoundError
     
 def matches_genome(genome1, genome2, symmetric=False):
