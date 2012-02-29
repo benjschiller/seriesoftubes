@@ -603,7 +603,7 @@ class MacsRow(list):
     
     def summit(self):
         '''returns the position of the summit'''
-        return int(self[4])
+        return int(self[4]) - 1
 
     def tags(self, type_=int):
         '''returns the number of unique tags in the peak region'''

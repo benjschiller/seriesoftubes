@@ -1,19 +1,20 @@
 import scripter
 import os.path
+from bioplus.genometools import guess_bam_genome, NoMatchFoundError
 
-class AlignmentsFilenameParser(scripter.FilenameParser):
+class BAMFilenameParser(scripter.FilenameParser):
     """
     for alignments produced by align.py
     """
     def __init__(self, filename, controls = {}, *args, **kwargs):
         if not os.path.splitext(filename)[1] == '.bam':
             raise InvalidFileException(filename)
-        super(AlignmentsFilenameParser, self).__init__(filename, *args, **kwargs)
+        super(BAMFilenameParser, self).__init__(filename, *args, **kwargs)
         
         sample = self.protoname
         # check controls
         if controls.has_key(sample):
-            run_name, control = controls[sample]
+            sample_name, control = controls[sample]
             scripter.debug('%s has control %s', sample, control)
             if control is None:
                 self.control_file = None
@@ -28,9 +29,17 @@ class AlignmentsFilenameParser(scripter.FilenameParser):
                            sample)
             # not in setup.txt, make an entry in controls
             self.control_file = None
-            run_name = sample
+            sample_name = sample
             controls[sample] = (sample, None)
+        
+        try:
+            self.genome = guess_bam_genome(filename)
+        except NoMatchFoundError:
+            self.genome = None
             
-        self.run_name = run_name  
-        self.output_dir = os.path.join(self.output_dir, run_name)
+        self.sample_name = sample_name
+        if genome is not None:
+            self.output_dir = os.path.join(self.output_dir, genome, sample_name)
+        else:
+            self.output_dir = os.path.join(self.output_dir, sample_name)
         self.check_output_dir(self.output_dir)

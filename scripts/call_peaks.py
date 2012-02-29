@@ -14,31 +14,11 @@ import subprocess
 import scripter
 import pysam
 from scripter import Environment, path_to_executable, get_logger
-from seriesoftubes.fnparsers import AlignmentsFilenameParser
+from seriesoftubes.fnparsers import BAMFilenameParser
 from pkg_resources import get_distribution, VersionConflict
 __version__ = get_distribution('seriesoftubes').version
 VERSION = __version__
 TARGET_DIR = 'peaks'
-
-def enforce_MACS_version():
-    """
-    Make sure we MACS > v1.4.1 and/or >v2.0
-    """
-    v1 = None
-    v2 = None
-    try:
-        v1 = get_distribution('MACS>=1.4.1,<2').version
-    except VersionConflict:
-        pass
-    try:
-        v2 = get_distribution('MACS>2').version
-    except VersionConflict:
-        pass
-    if v1 is None and v2 is None:
-        raise VersionConflict()
-    return v1, v2
-
-#MACS_VERSION1, MACS_VERSION2 = check_MACS_version()  
 
 def main():
     e = Environment(doc=__doc__, version=VERSION)
@@ -49,16 +29,10 @@ def main():
                                                     "macs14.py",
                                                     "macs"]),
                         help="optional path to macs executable (macs2 will be \
-used if found")
+used if found)")
     parser.add_argument('--path-to-R',
                         default=path_to_executable(["R64", "R"]),
                         help="optional path to R executable")
-    parser.add_argument('--no-wig', dest='wig', action='store_false',
-                        default=True,
-                        help='do not generate wiggle files (also disable subpeaks')
-    parser.add_argument('--chrom-wigs', dest='single_wig', action='store_false',
-                        default=True,
-                        help='generate a wig file per chromosome instead of a single wig')
     parser.add_argument('--no-diag', dest='diag', action='store_false', default=True,
                         help='disable generation of diagnostic xls file')
     parser.add_argument('--no-subpeaks', dest='subpeaks', action='store_false',
@@ -70,7 +44,7 @@ used if found")
     g.add_argument('--fix-only', action='store_true', default=True,
                    help='only fix subpeaks filename, do nothing else')
     parser.set_defaults(**{'target': 'peaks'})
-    e.set_filename_parser(AlignmentsFilenameParser)
+    e.set_filename_parser(BAMFilenameParser)
     e.set_config_reader(read_setup_file)
     e.set_config_writer(write_setup_file)
     e.do_action(run_macs, stay_open=True)
@@ -102,30 +76,13 @@ def read_setup_file(setup_file):
             else:
                 control = None
             controls[sample] = (name, control)
-        return controls
+        return {'controls': controls}
             
 def _prepend_cwd(d):
     '''prepends the current working directory to a directory d'''
     return os.path.join(os.getcwd(), d)
 
-def _join_opt(a,b):
-    '''joins an option with its value
-    _join_opt('--option,'value') -> '--option=value'
-    '''
-    return '='.join([a,b])
-
-def run_macs(*args, **kwargs):
-    if os.path.basename(kwargs['path_to_macs'])=='macs2':
-        return run_macs2(*args, **kwargs)
-    else:
-        return run_macs14(*args, **kwargs)
-    
-def run_macs2(parsed_filename, logging_level=10, **kwargs):
-    raise NotImplementError
-    logger = get_logger(logging_level)
-    input_file = parsed_filename.input_file
-    control_file = parsed_filename.control_file
-
+def decide_format(input_file, control_file, logger=None): 
     # See if we have paired-end files
     s = pysam.Samfile(input_file)
     is_paired = [s.next().is_paired for i in xrange(100000)]
@@ -134,103 +91,95 @@ def run_macs2(parsed_filename, logging_level=10, **kwargs):
         is_paired_control = [s.next().is_paired for i in xrange(100000)]
     else:
         is_paired_control = [True]
-    if all(is_paired + is_paired_control):
-        logger.warn('Detected paired end files')
-        logger.debug('Checking for pybedtools')
-        try:
-            import pybedtools
-            run_macs2_with_bedgraph(parsed_filename, **kwargs)
-        except ImportError:
-            logger.error('pybedtools is not installed. Falling back on MACS fixed-width track features')
-            run_macs2_alone(parsed_filename, **kwargs)
-    else:
-        run_macs2_alone(parsed_filename, **kwargs)
-    return
+    if all(is_paired) and all(is_paired_control):
+        if logger is not None:
+            logger.warn('Detected paired end files')
+            logger.warn('Using new BAMPEParser instead of BAMParser')
+        return 'BAMPE'
+    else: return 'BAM'
 
-def run_macs14(parsed_filename,
-           wig=True, single_wig=True, diag=True, subpeaks=True,
+def run_macs(fp_obj,
+           diag=True, subpeaks=True,
            fix_only=False, fix=True, 
            path_to_macs=None, path_to_R=None, logging_level=10,
            **kwargs):
     """Run MACS on a BAM file and produce the pdf from the .R model"""
+    is_v2 = os.path.basename(kwargs['path_to_macs'])=='macs2'
     logger = get_logger(logging_level)
     if fix_only:
-        return fix_subpeaks_filename(parsed_filename)
+        return fix_subpeaks_filename(fp_obj, logger=logger)
+    if path_to_macs is None:
+        path_to_macs = path_to_executable(["macs14", "macs14.py", "macs"])
 
-    input_file = parsed_filename.input_file
-    control_file = parsed_filename.control_file
+    input_file = fp_obj.input_file
+    control_file = fp_obj.control_file
+    if is_v2:
+        fmt = decide_format(input_file, control_file, logger)
+    else:
+        fmt = 'BAM'
     logger.debug('Processing', input_file)
     if control_file is not None:
         logger.debug('with control', control_file)
 
-    macs_options = ['--format=BAM']
-    if wig:
-        macs_options.append('--wig')
-        if single_wig: macs_options.append('--single-profile')
-        if subpeaks: macs_options.append('--call-subpeaks')
+    macs_options = ['--format %s' % fmt]
+    macs_options.append('--bdg')
+    macs_options.append('--single-profile')
+    if subpeaks: macs_options.append('--call-subpeaks')
     if diag: macs_options.append('--diag')
-    run_name = '_'.join(parsed_filename.run_name.split())
-    macs_options.append(_join_opt('--name', run_name))
-    macs_options.append(_join_opt('--treatment',
-                                  _prepend_cwd(input_file)))
-    if parsed_filename.control_file is not None:
-        macs_options.append(_join_opt('--control',
-                                _prepend_cwd(control_file)))
+    run_name = '_'.join(fp_obj.run_name.split())
+    macs_options.append('--name %s' % run_name)
+    macs_options.append('--treatment %s' % _prepend_cwd(input_file)) 
+    if control_file is not None:
+        macs_options.append('--control %s' % _prepend_cwd(control_file))
 
-    if path_to_macs is None:
-        path_to_macs = path_to_executable(["macs14", "macs14.py", "macs"])
-    if platform.system() is 'Windows':
-        step = [sys.executable, path_to_macs] + macs_options
-    else:
-        step = [path_to_macs] + macs_options
+    step = [path_to_macs] + macs_options
+    if platform.system() is 'Windows': step.insert(sys.executable, 0)
     
     logger.debug('Launching', ' '.join(step))
     job = subprocess.Popen(step,
                            stdout=subprocess.PIPE,
                            stderr=subprocess.STDOUT,
+                           cwd=_prepend_cwd(fp_obj.output_dir))
+
+    stdout_buffer = '%s\n\n%s\n' % (' '.join(step), job.communicate()[0])
+    logger.debug(stdout_buffer)
+    if subpeaks and fix: fix_subpeaks_filename(fp_obj)
+    
+    R_file = os.path.join(os.getcwd(), fp_obj.output_dir,
+                          ''.join([fp_obj.protoname, '_model.r']))
+    R_output = Rmodel_to_pdf(R_file, path_to_R=path_to_R, logger=logger)
+    return '%s\n%s' % (stdout_buffer, R_output)
+
+def Rmodel_to_pdf(R_file, path_to_R=None, logger=logger):
+    if path_to_R is None:
+        try:
+            path_to_R = path_to_executable(["R64", "R"], max_depth=3)
+        except scripter.Usage:
+            msg = 'R is not installed. Could not process model pdf'
+            logger.error(msg)
+            return '%s\n' % msg
+    if not os.path.exists(R_file):
+        logger.warn('Warning: %s does not exist', R_file)
+        return 'Nothing to do\n'
+    
+    logger.debug('Processing %s', R_file)
+    job = subprocess.Popen([path_to_R, '--vanilla'], 
+                           stdout=subprocess.PIPE,
+                           stderr=subprocess.STDOUT,
+                           stdin=open(R_file),
                            cwd=_prepend_cwd(parsed_filename.output_dir))
-
-    stdout_data = job.communicate()[0]
-    stdout_buffer = '{0!s}\n\n{1!s}'.format(' '.join(step), stdout_data)
-   
-    if subpeaks and fix:
-        output = fix_subpeaks_filename(parsed_filename)
-        logger.debug('{0!s}\n{1!s}'.format(stdout_buffer, output))
-
-    # now process R file
-    if make_pdf:
-        R_file = os.path.join(os.getcwd(), parsed_filename.output_dir,
-                              ''.join([parsed_filename.protoname, '_model.r']))
-
-        logger.debug('Processing', R_file)
-
-        if not os.path.exists(R_file):
-            logger.debug('Warning:', R_file, 'does not exist')
-        else:
-            R_pointer = open(R_file)
-            if path_to_R is None:
-                path_to_R = path_to_executable(["R64", "R"], max_depth=3)
-            step =[path_to_R, '--vanilla'] 
-            job = subprocess.Popen(step,
-                                   stdout=subprocess.PIPE,
-                                   stderr=subprocess.STDOUT,
-                                   stdin=R_pointer,
-                                   cwd=_prepend_cwd(parsed_filename.output_dir))
-            stdout_data = job.communicate()[0]
-            R_pointer.close()
-            stdout_buffer = '{0!s}\n\n{1!s}\n{2!s}\n'.format(stdout_buffer,
-                                                             ' '.join(step),
-                                                             stdout_data)
-
+    stdout_buffer = '%s\n\n%s\n' % (' '.join(step), job.communicate()[0])
+    logger.debug(stdout_buffer)
     return stdout_buffer
 
-def fix_subpeaks_filename(parsed_filename, debug=False):
+def fix_subpeaks(parsed_filename, logger=None):
     """
     there's a few problems with the subpeaks file that we fix here
     
     1) Breaks MACS naming convention, rename it
     2) First line is not compatible with BED format, delete it
     """
+    if logger is None: logger = get_logger()
     fn_parts = parsed_filename.protoname.split(extsep)
     path_to_subpeaks = os.path.join(parsed_filename.output_dir,
                         extsep.join([fn_parts[0] + '_peaks'] + \
@@ -240,29 +189,33 @@ def fix_subpeaks_filename(parsed_filename, debug=False):
                                             ['_subpeaks', 'bed']))
     # check if the file exists
     if os.path.exists(new_path_to_subpeaks):
-        return 'Cannot move {0!s} to {1!s}. Latter file already exists'.format(
-                                        path_to_subpeaks, new_path_to_subpeaks)
-    try:
-        old_file = open(path_to_subpeaks)
+        logger.error('Cannot move %s to %s. Latter file already exists',
+                    path_to_subpeaks, new_path_to_subpeaks)
+        return
+    try: old_file = open(path_to_subpeaks)
     except EnvironmentError:
-        return 'Could not open {0!s} for reading'.format(path_to_subpeaks)
-    try:
-        new_file = open(path_to_subpeaks, 'w')
+        logger.error('Could not open %s for reading', path_to_subpeaks)
+        return  
+    try: new_file = open(path_to_subpeaks, 'w')
     except EnvironmentError:
-        return 'Could not open {0!s} for writing'.format(new_path_to_subpeaks)
+        logger.error('Could not open %s for writing', new_path_to_subpeaks)
+        return
     try:
         old_file.readline()
         new_file.writelines(old_file.readlines())
     except EnvironmentError:
-        return 'Something went wrong copying {0!s} to {1!s}'.format(
-                                        path_to_subpeaks, new_path_to_subpeaks)
+        logger.error('Something went wrong copying %s to %s',
+                     path_to_subpeaks, new_path_to_subpeaks)
+        return
         old_file.close()
         new_file.close()
-    try:
-        os.remove(path_to_subpeaks)
+    try: os.remove(path_to_subpeaks)
     except EnvironmentError:
-        return 'Copied {0!s} to {1!s} but could not remove original'.format(path_to_subpeaks,
-                                                                          new_path_to_subpeaks)
-    return 'Moved {0!s} to {1!s} successfully'
+        logger.warn('Copied %s to %s but could not remove original',
+                    path_to_subpeaks, new_path_to_subpeaks)
+        return
+    logger.info('Moved %s to %s successfully',
+                path_to_subpeaks, new_path_to_subpeaks)
+    return
 
 if __name__=="__main__": main()

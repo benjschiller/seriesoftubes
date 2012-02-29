@@ -39,7 +39,7 @@ def MOODS_search(seq, motif, thresholds=0):
     # Note: algorithm = 'lf' fails due to segmentation fault
     results_per_matrix = MOODS.search(sequence, [matrix_], thresholds,
             bg=None, algorithm='pla', q=7, absolute_threshold=True,
-            both_strands=False, combine=True)
+            both_strands=True, combine=True)
 
     # format as Motif.search_pwm results
     search_results = results_per_matrix[0]
@@ -83,6 +83,7 @@ def search_peak(peak_ID, peak, peakseq, motif, debug=False):
    
     clean_peak_seq = _clean_sequence(peakseq)
     clean_peak_length = len(clean_peak_seq)
+    clean_offset = peakseq.find(clean_peak_seq)
 
     site_count = 0
     total_Ri = 0
@@ -102,14 +103,21 @@ def search_peak(peak_ID, peak, peakseq, motif, debug=False):
                     peak.chrom_start(),
                     peak.chrom_end()]
 
-    try: peak_center = peak.summit()
-    except AttributeError: peak_center = clean_peak_length / 2
+    try:
+        peak_center = peak.summit()
+        if int(peak_center) > int(peak_coordinates[1]):
+            peak_center -= int(peak_coordinates[1])
+            
+    except AttributeError:
+        peak_center = clean_peak_length / 2 + clean_offset
 
     try:
-        peak_intensity = peak.tagsv1()
-    except ValueError:
-        peaks_intensity = peak.tagsv2()
-    except AttributeError: peak_intensity = 'NA'
+        peak_intensity = peak.tags()
+    except (ValueError, AttributeError):
+        try:
+            peak_intensity = peak.tagsv2()
+        except AttributeError:
+            peak_intensity = 'NA'
 
     try: peak_misc = peak.misc()
     except AttributeError: peak_misc = []
@@ -121,11 +129,12 @@ def search_peak(peak_ID, peak, peakseq, motif, debug=False):
         site_count += 1
         total_Ri += Ri
         
-        offset = abs(position)
         if position > 0:
+            offset = position + clean_offset
             site_seq = clean_peak_seq[offset:offset + motif_length]
             strand = '+'
         else:
+            offset = clean_offset + clean_peak_length + position - motif_length
             site_seq = _reverse_complement(clean_peak_seq[offset:
                             offset + motif_length])
             strand = '-'
@@ -148,8 +157,8 @@ def search_peak(peak_ID, peak, peakseq, motif, debug=False):
 
         # check if this is the best site
         if Ri > best_Ri or \
-            Ri == best_Ri and abs(peak_center-1 - offset) < \
-                    abs(peak_center-1 - offset):
+            Ri == best_Ri and (abs(peak_center - offset) - motif_length/2) < \
+                    best_position:
             best_Ri = Ri
             best_seq = str(site_seq)
             best_position = offset
@@ -161,11 +170,11 @@ def search_peak(peak_ID, peak, peakseq, motif, debug=False):
         best_Ri, best_seq, best_position, best_strand, 
         clean_peak_length, peak_center, ','.join(peak_misc)]
 
-    peak_BED_row = peak_coordinates + [peak_ID, 1000, '+',
+    peaks_BED_row = peak_coordinates + [peak_ID, 1000, '+',
         int(peak_coordinates[1]) + peak_center,
         int(peak_coordinates[1]) + peak_center + 1]
 
-    return (peak_info_row, peak_BED_row, sites_info_rows, sites_bed_rows)
+    return (peak_info_row, peaks_BED_row, sites_info_rows, sites_bed_rows)
 
 def find_sites(peaks_file, fasta_file, motif, bed=True, xls=False,
                output_dir = None, motif_type = 'MEME',

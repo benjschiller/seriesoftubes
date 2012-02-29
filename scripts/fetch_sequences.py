@@ -222,10 +222,12 @@ def get_sequences(parsed_filename, from_MACS_subpeaks=True, from_MACS_xls=False,
         start = max(int(start), 0)
         end = end # don't need to truncate end, twobitreader does that
         name = "peak_{!s}_{!s}_{!s}_{!s}".format(num_peaks, chrom, start, end)
-        sitem = (chrom, start, end, name, sort_item(words))
+        try: sitem = (chrom, start, end, name, sort_item(words))
+        except IndexError:  sitem = (chrom, start, end, name, '1000')
         if sort:
             seq_list.append(sitem)
         else:
+            seq_list.append(sitem)
             sequence = ref_genome[chrom][start:end]
             write_to_fasta(output_handle, sequence, name=name)
             bed_file.write(bed_template.format(*sitem))

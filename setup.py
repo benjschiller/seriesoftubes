@@ -28,7 +28,7 @@ def main():
 	      author='Benjamin Schiller',
 	      author_email='benjamin.schiller@ucsf.edu',
           requires = ['scripter (>=2.9.0, <3.0)', 'biopython (>=1.56)',
-							  'twobitreader (>=1.0.4)', 'pysam (>=0.4)'],
+					  'twobitreader (>=1.0.4)', 'pysam (>=0.4)'],
 	      packages = ['bioplus', 'seriesoftubes', 'seriesoftubes.converters',
 					  'seriesoftubes.fnparsers', 'seriesoftubes.tubes'],
 		  package_data= {'bioplus': ['data/genomes.db']},
