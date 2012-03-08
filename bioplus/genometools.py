@@ -69,7 +69,7 @@ def genome(genome_name):
 class GenomeNotAvailableError(ValueError):
     pass
 
-class NoMatchFound(LookupError):
+class NoMatchFoundError(LookupError):
     pass
 
 def guess_bam_genome(bam_file_or_filename):
