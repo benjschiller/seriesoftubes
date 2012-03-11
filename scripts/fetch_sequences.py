@@ -12,6 +12,7 @@ from scripter import Usage, InvalidFileException, get_logger
 from pkg_resources import get_distribution
 __version__ = get_distribution('seriesoftubes').version
 VERSION = __version__
+raise DeprecationWarning, "This is being replaced by call_peaks.py"
 
 def positive_int(i):
     """
