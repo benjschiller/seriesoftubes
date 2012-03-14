@@ -11,7 +11,24 @@ _CONNECTION = sqlite3.connect(resource_filename('bioplus','data/genomes.db'))
 import atexit
 atexit.register(cleanup_resources)
 from operator import itemgetter
+from tempfile import TemporaryFile
 
+def TemporaryGenomeFile(genome_name):
+    """
+    returns a file-like object pointing to a temporary file containing 
+    the chromsome names and sizes
+    
+    the current file position will be 0
+    
+    it will be deleted when the object is garbage collected
+    """
+    f = NamedTemporaryFile()
+    genome_rows = genome(genome_name).iteritems()
+    f.writelines(('%s\t%d\n' for chrom, size in genome_rows))
+    f.flush()
+    f.seek(0)
+    return f
+    
 def _populate_available_genomes():
     name_tuples = _CONNECTION.execute("select name from sqlite_master WHERE type='table'").fetchall()
     return map(itemgetter(0), name_tuples)

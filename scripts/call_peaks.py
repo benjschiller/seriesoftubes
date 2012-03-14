@@ -6,14 +6,14 @@ use --config to specify file with matched sample/controls
 from ConfigParser import ConfigParser
 import sys
 from errno import ENOENT, EACCES
-from os import access, extsep, strerror, R_OK, getcwd
-from os.path import exists, join
+from os import access, extsep, strerror, R_OK, getcwd, getenv, listdir
+from os.path import exists, join, splitext
 import platform
 from subprocess import Popen, STDOUT, PIPE
 import pysam
 from scripter import Environment, path_to_executable, get_logger, Usage, exit_on_Usage
 from seriesoftubes.fnparsers import BAMFilenameParser
-from bioplus.genometools import guess_bam_genome, genome, NoMatchFoundError
+from bioplus.genometools import guess_bam_genome, genome, NoMatchFoundError, TemporaryGenomeFile
 from pkg_resources import get_distribution, VersionConflict
 __version__ = get_distribution('seriesoftubes').version
 VERSION = __version__
@@ -24,13 +24,10 @@ def main():
     e = Environment(doc=__doc__, version=VERSION)
     parser = e.argument_parser
     parser.add_argument('-g', '--genome-size', dest='user_gsize', default=None,
-                        help='Optional user-specified genome size')
+                        help='Optional user-specified genome size (DEFAULT: script will try to auto-detect the genome)')
     parser.add_argument('--path-to-macs',
                         default=path_to_executable("macs2"),
                         help="optional path to macs2 executable")
-    parser.add_argument('--path-to-R',
-                        default=path_to_executable(["R64", "R"]),
-                        help="optional path to R executable")
     parser.add_argument('--no-subpeaks', dest='subpeaks', action='store_false',
                         default=True,
                         help='do not call subpeaks with --call-summits')
@@ -89,7 +86,7 @@ def decide_format(input_file, control_file, logger=None):
 
 @exit_on_Usage
 def run_macs(fp_obj, subpeaks=True, path_to_macs=None, logging_level=10,
-             user_gsize=None,
+             user_gsize=None, ssh=None, http=None,
              **kwargs):
     """Run MACS on a BAM file
     """
@@ -103,7 +100,10 @@ def run_macs(fp_obj, subpeaks=True, path_to_macs=None, logging_level=10,
     if control_file is not None: logger.debug('with control', control_file)
 
     # determine genome name and size
-    if user_gsize: genome_size = user_gsize
+    if user_gsize:
+        genome_size = user_gsize
+        try: genome_build = guess_bam_genome(input_file)
+        except NoMatchFoundError: genome_build is None
     else:
         try: genome_build = guess_bam_genome(input_file)
         except NoMatchFoundError:
@@ -114,11 +114,12 @@ def run_macs(fp_obj, subpeaks=True, path_to_macs=None, logging_level=10,
         else: return '%.1e' % sum(genome(genome_build).itervalues())
     
     fmt = decide_format(input_file, control_file, logger)
+    name = fb_obj.run_name.replace(' ', '_')
     macs_options = ['-f %s' % fmt, # correct file format BAM or BAMPE
                     '-B', #bedgraph
                     '-S', #whole genome
                     '-g %s' % genome_size,
-                    '-n %s' % fb_obj.run_name.replace(' ', '_'), # run name
+                    '-n %s' % name, # run name
                     '-t %s' % input_file] # treatment
     if control_file is not None:
         macs_options.append('-c %s' % control_file)
@@ -128,8 +129,7 @@ def run_macs(fp_obj, subpeaks=True, path_to_macs=None, logging_level=10,
     if platform.system() is 'Windows': step.insert(sys.executable, 0)
     
     logger.debug('Launching', ' '.join(step))
-    cwd = join(getcwd(), fp_obj.output_dir)
-    job = Popen(step, stdout=PIPE, stderr=STDOUT, cwd=cwd)
+    job = Popen(step, stdout=PIPE, stderr=STDOUT, cwd=fp_obj.output_dir)
 
     stdout_buffer = '%s\n\n%s\n' % (' '.join(step), job.communicate()[0])
     logger.debug(stdout_buffer)
