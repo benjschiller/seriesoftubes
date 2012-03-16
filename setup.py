@@ -17,12 +17,22 @@ try: import py2exe
 except ImportError: pass
 try: import py2app
 except ImportError: pass
+cmdclass = {}
+try:
+    from sphinx.setup_command import BuildDoc
+    cmdclass['build_sphinx'] = BuildDoc
+except ImportError: pass
+try:
+    from sphinx_pypi_upload import UploadDoc
+    cmdclass['upload_sphinx'] = UploadDoc
+except ImportError: pass
+name = 'seriesoftubes'
+version = '0.9.0'
 
 def main():
 	if not float(sys.version[:3])>=2.7:
 		sys.exit("CRITICAL: Python version must greater than or equal to 2.7! python 2.7.2 is recommended!\n")
-	setup(name='seriesoftubes',
-          version = "0.9.0",
+	setup(name=name, version = version,
 	      description='An extended pipeline for Solexa ChIP-seq data',
 	      author='Benjamin Schiller',
 	      author_email='benjamin.schiller@ucsf.edu',
@@ -35,6 +45,11 @@ def main():
 		  package_data= {'bioplus': ['data/genomes.db']},
           scripts = [os.path.join('scripts', x) for x in os.listdir('scripts') 
                      if not x.startswith('.')],
+		  cmdclass=cmdclass,
+		  command_options={
+			  'project': ('setup.py', name),
+			  'version': ('setup.py', version),
+		  },
   	      classifiers = [
 				'Development Status :: 3 - Alpha',
 				'License :: OSI Approved :: Artistic License',

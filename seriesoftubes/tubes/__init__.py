@@ -7,6 +7,8 @@ __all__ = ['wait_for_job', 'PolledPipe']
 import time
 
 def wait_for_job(job, logs=[], logger=None):
+    """wait for a job (Popen instance) to complete
+    """
     otime = time.time()
     while True:
         atime = time.time()

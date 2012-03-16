@@ -1,3 +1,9 @@
+"""Convert single or pairs of FASTQ files to tab-format
+
+NAME    SEQ1    QUAL1    (SEQ2    QUAL2)
+
+Output is always to stdout (err goes to stderr, redirect it if you need to)
+"""
 import pysam
 import os
 import select
@@ -15,12 +21,11 @@ from itertools import izip
 def main():
     """
     what to do if we execute the module as a script
+    
+    
     fastqtotab can only convert files because of the paired-end problem
     """
-    parser = ArgumentParser(description="""Convert single or pairs of FASTQ files to tab-format
-NAME    SEQ1    QUAL1    (SEQ2    QUAL2)
-
-Output is always to stdout (err goes to stderr, redirect it if you need to)""")
+    parser = ArgumentParser(description=__doc__)
     parser.add_argument('fastq_file_read1', help='File with either single reads or the first of paired reads')
     parser.add_argument('fastq_file_read2', nargs='?', help='(optional) File with second of paired reads')
     parser.add_argument('--compression', nargs='?', default='auto', 

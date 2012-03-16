@@ -1,3 +1,15 @@
+"""Convert BAM/SAM to FASTQ format*
+@name
+sequence
++name
+quality score (phred33)
+
+files may be SAM or BAM (autodetected)
+If the file(s) contain paired-end sequences, we will write to two files
+    (in the current working directory)
+If the files contain single end sequences, we will write to stdout by default
+Output is always to stdout (err goes to stderr, redirect it if you need to)
+"""
 import pysam
 import os
 import select
@@ -12,19 +24,10 @@ from gzip import GzipFile
 def main():
     """
     what to do if we execute the module as a script
-    bamtotab can only convert files because of the paired-end problem
+    
+    bamtotab can only convert files (not stdin) because of the paired-end problem
     """
-    parser = ArgumentParser(description="""Convert BAM/SAM to FASTQ format*
-@name
-sequence
-+name
-quality score (phred33)
-
-files may be SAM or BAM (autodetected)
-If the file(s) contain paired-end sequences, we will write to two files
-    (in the current working directory)
-If the files contain single end sequences, we will write to stdout by default
-Output is always to stdout (err goes to stderr, redirect it if you need to)""")
+    parser = ArgumentParser(description=__doc__)
     parser.add_argument('files', nargs='+', help='List of input files')
     parser.add_argument('--no-gzip',
                         help='Do not compress the output files')
@@ -35,6 +38,9 @@ Output is always to stdout (err goes to stderr, redirect it if you need to)""")
     read_files(**context)
 
 def read_files(files=None, no_gzip=False, no_stdout=False):
+    """
+    actually reads the SAM/BAM files
+    """
     for file in files:
         if file is None: continue
         f = pysam.Samfile(file)

@@ -1,3 +1,9 @@
+"""Convert single-end or paired-end sequencing files to tab-format
+NAME    SEQ1    QUAL1    (SEQ2    QUAL2)
+
+Supports FASTQ (plaintext, gzip and bz2), SAM, BAM
+Output is always to stdout (err goes to stderr, redirect it if you need to)
+"""
 from argparse import ArgumentParser
 import bz2
 import gzip
@@ -5,11 +11,10 @@ import bamtotab, fastqtotab
 from .discover import discover_file_format
 
 def main():
-    parser = ArgumentParser(description="""Convert single-end or paired-end sequencing files to tab-format
-NAME    SEQ1    QUAL1    (SEQ2    QUAL2)
-
-Supports FASTQ (plaintext, gzip and bz2), SAM, BAM
-Output is always to stdout (err goes to stderr, redirect it if you need to)""")
+    """
+    what to do if we execute the module as a script
+    """
+    parser = ArgumentParser(description=__doc__)
     parser.add_argument('file_read1', help='File with either single or both paired reads or the first of paired reads')
     parser.add_argument('file_read2', nargs='?', help='(optional) File with second of paired reads')
     args = parser.parse_args()

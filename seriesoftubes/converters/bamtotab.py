@@ -1,3 +1,10 @@
+"""Convert BAM/SAM to tab-format
+
+NAME    SEQ1    QUAL1    SEQ2    QUAL2
+
+files may be SAM or BAM (autodetected)
+
+Output is always to stdout (err goes to stderr, redirect it if you need to)"""
 import pysam
 import os
 import select
@@ -13,11 +20,7 @@ def main():
     what to do if we execute the module as a script
     bamtotab can only convert files because of the paired-end problem
     """
-    parser = ArgumentParser(description="""Convert BAM/SAM to tab-format
-NAME    SEQ1    QUAL1    SEQ2    QUAL2
-
-files may be SAM or BAM (autodetected)
-Output is always to stdout (err goes to stderr, redirect it if you need to)""")
+    parser = ArgumentParser(description=__doc__)
     parser.add_argument('files', nargs='+', help='List of input files')
     args = parser.parse_args()
     context = vars(args)

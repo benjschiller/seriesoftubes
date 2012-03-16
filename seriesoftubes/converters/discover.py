@@ -2,6 +2,12 @@ import gzip
 import bz2
 
 def discover_file_format(filename):
+    """discover the format of a file
+    returns a tuple (open_function, 'FORMAT')
+    
+    open_function will either be open, gzip.GzipFile, bz2.BZ2File, or None
+    FORMAT can be 'BAM', 'SAM', 'FASTQ' or None
+    """
     f = open(filename, 'rb')
     head = f.read(3)
     f.close()

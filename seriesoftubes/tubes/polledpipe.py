@@ -9,12 +9,15 @@ Use cygwin if you need to run this on Windows.""")
 
 class PolledPipe(object):
     """
-    A PolledPipe object has two attributes
-    r - pipe read file descriptor
+    A PolledPipe object has two attributes:
+    
+    r - pipe read file descriptor,
     w - pipe write file descriptor
-    and three methods
-    poll() -- poll the read end of the pipe
-    readlines() -- read availble lines if the poll says the pipe is ready
+    
+    and three methods:
+    
+    poll() -- poll the read end of the pipe,
+    readlines() -- read availble lines if the poll says the pipe is ready,
     log(level=logging.error) -- emit the result of readline (if not None)
     
     a select.poll() object has r registered to it

@@ -36,13 +36,13 @@ def in_windows_factory(intervals):
         rec = 0 
     return in_window
 
-def window_to_iter(chrom, start, end, filename, type_=int):
+def window_to_iter(chrom, start, end, filename, my_type=int):
     """
     generator that returns the values in a region [start,end) on chrom
     
     from a bedgraph file called filename
     
-    note: bedgraph values are assumed to be ints unless type_ is set to
+    note: bedgraph values are assumed to be ints unless my_type is set to
     something  else
     """
     in_window = in_window_factory(chrom, start, end)
@@ -59,7 +59,7 @@ def window_to_iter(chrom, start, end, filename, type_=int):
         this_start = int(this_range[1])
         for i in xrange(previous_end, this_start): yield 0
         this_end = int(this_range[2])
-        this_value = type_(this_range[3])
+        this_value = my_type(this_range[3])
         for i in xrange(this_start, this_end): yield this_value
         previous_end = this_end
         
