@@ -22,7 +22,7 @@ def main():
 	if not float(sys.version[:3])>=2.7:
 		sys.exit("CRITICAL: Python version must greater than or equal to 2.7! python 2.7.2 is recommended!\n")
 	setup(name='seriesoftubes',
-          version = "0.9",
+          version = "0.9.0",
 	      description='An extended pipeline for Solexa ChIP-seq data',
 	      author='Benjamin Schiller',
 	      author_email='benjamin.schiller@ucsf.edu',
