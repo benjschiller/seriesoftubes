@@ -8,7 +8,7 @@ class BAMFilenameParser(scripter.FilenameParser):
     """
     def __init__(self, filename, controls = {}, *args, **kwargs):
         if not os.path.splitext(filename)[1] == '.bam':
-            raise InvalidFileException(filename)
+            raise scripter.InvalidFileException(filename)
         super(BAMFilenameParser, self).__init__(filename, *args, **kwargs)
         
         sample = self.protoname
@@ -31,15 +31,6 @@ class BAMFilenameParser(scripter.FilenameParser):
             self.control_file = None
             sample_name = sample
             controls[sample] = (sample, None)
-        
-        try:
-            self.genome = guess_bam_genome(filename)
-        except NoMatchFoundError:
-            self.genome = None
             
         self.sample_name = sample_name
-        if genome is not None:
-            self.output_dir = os.path.join(self.output_dir, genome, sample_name)
-        else:
-            self.output_dir = os.path.join(self.output_dir, sample_name)
-        self.check_output_dir(self.output_dir)
+        self.output_dir = os.path.join(self.output_dir, sample_name)
