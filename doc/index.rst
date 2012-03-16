@@ -6,23 +6,25 @@
 seriesoftubes: an extended analysis pipeline for ChIP-seq data
 ==============================================================
 
-Licensed under Perl Artistic License 2.0
+| Licensed under Perl Artistic License 2.0
+| No warranty is provided, express or implied
 
-No warranty is provided, express or implied
-
-Contents:
-
-.. toctree::
-   :maxdepth: 2
-
-   sot/sot_api
-   bioplus/bioplus_api
-
-.. automodule::seriesoftubes
 
 Welcome
 =======
 More documentation will be posted soon. Seriesoftubes is currently being developed on github at https://github.com/benjschiller/seriesoftubes/
+
+Contents
+========
+
+.. toctree::
+   :maxdepth: 2
+
+   install
+   sot/sot_api
+   bioplus/bioplus_api
+
+.. automodule::seriesoftubes
 
 Indices and tables
 ==================

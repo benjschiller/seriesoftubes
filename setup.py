@@ -12,22 +12,9 @@ All rights reserved.
 
 import os
 import sys
-from distutils.core import setup
-try: import py2exe
-except ImportError: pass
-try: import py2app
-except ImportError: pass
-cmdclass = {}
-try:
-    from sphinx.setup_command import BuildDoc
-    cmdclass['build_sphinx'] = BuildDoc
-except ImportError: pass
-try:
-    from sphinx_pypi_upload import UploadDoc
-    cmdclass['upload_sphinx'] = UploadDoc
-except ImportError: pass
+from setuptools import setup
 name = 'seriesoftubes'
-version = '0.9.0'
+version = '0.9.1'
 
 def main():
 	if not float(sys.version[:3])>=2.7:
@@ -37,15 +24,16 @@ def main():
 	      author='Benjamin Schiller',
 	      author_email='benjamin.schiller@ucsf.edu',
 	      url = 'https://github.com/benjschiller/seriesoftubes',
-          requires = ['scripter (>=3.1)', 'biopython (>=1.56)',
-					  'twobitreader (>=2.4)', 'pysam (>=0.4)',
-					  'MACS (>=2.0.10)'],
+          install_requires = ['scripter>=3.1',
+							  'biopython>=1.56',
+					          'pysam>=0.4',
+					          'MACS==2.0.10'
+					         ],
 	      packages = ['bioplus', 'seriesoftubes', 'seriesoftubes.converters',
 					  'seriesoftubes.fnparsers', 'seriesoftubes.tubes'],
 		  package_data= {'bioplus': ['data/genomes.db']},
           scripts = [os.path.join('scripts', x) for x in os.listdir('scripts') 
                      if not x.startswith('.')],
-		  cmdclass=cmdclass,
 		  command_options={
 			  'project': ('setup.py', name),
 			  'version': ('setup.py', version),
@@ -60,7 +48,8 @@ def main():
 				'Operating System :: POSIX',
 				'Programming Language :: Python :: 2.7',
 				'Topic :: Scientific/Engineering :: Bio-Informatics'
-				]
+				],
+		  dependency_links = ['https://github.com/downloads/benjschiller/MACS/benjschiller-MACS-v2.0.10pre1.zip#egg=MACS-2.0.10'],
 	      )
 if __name__ == '__main__':
 	main()
