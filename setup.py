@@ -26,6 +26,7 @@ def main():
 	      description='An extended pipeline for Solexa ChIP-seq data',
 	      author='Benjamin Schiller',
 	      author_email='benjamin.schiller@ucsf.edu',
+	      url = 'https://github.com/benjschiller/seriesoftubes',
           requires = ['scripter (>=3.1)', 'biopython (>=1.56)',
 					  'twobitreader (>=2.4)', 'pysam (>=0.4)',
 					  'MACS (>=2.0.10)'],
