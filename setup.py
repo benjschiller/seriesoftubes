@@ -20,15 +20,14 @@ except ImportError: pass
 
 def main():
 	if not float(sys.version[:3])>=2.7:
-		sys.stderr.write("CRITICAL: Python version must greater than or equal to 2.7! python 2.7.2 is recommended!\n")
-		sys.exit(1)
+		sys.exit("CRITICAL: Python version must greater than or equal to 2.7! python 2.7.2 is recommended!\n")
 	setup(name='seriesoftubes',
           version = "0.9",
 	      description='An extended pipeline for Solexa ChIP-seq data',
 	      author='Benjamin Schiller',
 	      author_email='benjamin.schiller@ucsf.edu',
-          requires = ['scripter (>=2.9.0, <3.0)', 'biopython (>=1.56)',
-					  'twobitreader (>=1.0.4)', 'pysam (>=0.4)'],
+          requires = ['scripter (>=3.1)', 'biopython (>=1.56)',
+					  'twobitreader (>=2.4)', 'pysam (>=0.4)'],
 	      packages = ['bioplus', 'seriesoftubes', 'seriesoftubes.converters',
 					  'seriesoftubes.fnparsers', 'seriesoftubes.tubes'],
 		  package_data= {'bioplus': ['data/genomes.db']},
