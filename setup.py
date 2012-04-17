@@ -27,7 +27,7 @@ def main():
           install_requires = ['scripter>=3.1',
 							  'biopython>=1.56',
 					          'pysam>=0.4',
-					          'MACS==2.0.10'
+					          'MACS>=2.0.10'
 					         ],
 	      packages = ['bioplus', 'seriesoftubes', 'seriesoftubes.converters',
 					  'seriesoftubes.fnparsers', 'seriesoftubes.tubes'],

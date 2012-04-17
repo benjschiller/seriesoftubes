@@ -97,7 +97,7 @@ def run_macs(f, subpeaks=True, path_to_macs=None, logging_level=10,
     """
     logger = get_logger(logging_level)
     if path_to_macs is None:
-        path_to_macs = path_to_executable(["macs14", "macs14.py", "macs"])
+        path_to_macs = path_to_executable("macs2")
 
     input_file = f.input_file
     control_file = f.control_file    
@@ -130,7 +130,7 @@ def run_macs(f, subpeaks=True, path_to_macs=None, logging_level=10,
         macs_options.extend(['-c', join(getcwd(), control_file)])
     if subpeaks: macs_options.append('--call-summits')
 
-    step = [path_to_macs] + macs_options
+    step = [path_to_macs, 'callpeak'] + macs_options
     if platform.system() is 'Windows': step.insert(sys.executable, 0)
     
     logger.debug('Launching', ' '.join(step))

@@ -3,6 +3,7 @@ import random
 import itertools
 import os.path
 from Bio.SeqIO import parse, write
+import Bio.Seq
 
 def count(foo):
     '''takes a file named foo returns the number lines'''
@@ -12,7 +13,7 @@ def count(foo):
         n += 1
     return n
     
-def random(foo, n):
+def random_seq(foo, n):
     '''takes a file foo and returns n random sequences from it'''
     max_n = count(foo)
     record_numbers = itertools.repeat(random.randint(1,max_n),times=n)
@@ -72,3 +73,13 @@ def truncate_seqs(f, n):
     # USE FILENAME CORRECTION SCHEME
     foo = f+str(n)+'.fa'
     writer(foo, (rec[0:n] for rec in seq_recs))
+
+def permute_fasta(f):
+    '''
+    takes a FASTA file and returns a new FASTA file with each sequence randomly
+    permuted (separately, such that its % A,T,G,C doesn't change)
+    '''
+    seq_recs = reader(f)
+    mutable_seq_recs = itertools.imap(Bio.Seq.Seq.tomutable, seq_recs)
+    map(random.shuffle, mutable_seq_recs)
+    writer(f + '_permuted.fa', mutable_seq_recs)
