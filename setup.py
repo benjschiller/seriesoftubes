@@ -5,7 +5,8 @@
 
 Setup script for seriesoftubes 
 
-Copyright (c) 2010 Benjamin Schiller <benjamin.schiller@ucsf.edu>
+Copyright (c) 2010-2012 Benjamin Schiller <benjamin.schiller@ucsf.edu>,
+                        University of California, San Francisco
 
 All rights reserved.
 """
@@ -14,7 +15,7 @@ import os
 import sys
 from setuptools import setup
 name = 'seriesoftubes'
-version = '0.9.1'
+version = '0.9.2'
 
 def main():
 	if not float(sys.version[:3])>=2.7:
@@ -24,9 +25,10 @@ def main():
 	      author='Benjamin Schiller',
 	      author_email='benjamin.schiller@ucsf.edu',
 	      url = 'https://github.com/benjschiller/seriesoftubes',
-          install_requires = ['scripter>=3.1',
+          install_requires = ['scripter>=3.2.2',
 							  'biopython>=1.56',
 					          'pysam>=0.4',
+					          'twobitreader>=2.5',
 					          'MACS>=2.0.10'
 					         ],
 	      packages = ['bioplus', 'seriesoftubes', 'seriesoftubes.converters',

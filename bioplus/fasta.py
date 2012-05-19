@@ -79,7 +79,11 @@ def permute_fasta(f):
     takes a FASTA file and returns a new FASTA file with each sequence randomly
     permuted (separately, such that its % A,T,G,C doesn't change)
     '''
-    seq_recs = reader(f)
-    mutable_seq_recs = itertools.imap(Bio.Seq.Seq.tomutable, seq_recs)
-    map(random.shuffle, mutable_seq_recs)
-    writer(f + '_permuted.fa', mutable_seq_recs)
+    mute = Bio.Seq.Seq.tomutable
+    shuffle = random.shuffle
+    with open(f + '_permuted.fa', 'w') as output:
+        with open(f, 'rU') as fobj:
+            for seq_rec in parse(fobj, 'fasta'):
+                seq_rec.seq = mute(seq_rec.seq)
+                shuffle(seq_rec.seq)
+                write(seq_rec, output, 'fasta')

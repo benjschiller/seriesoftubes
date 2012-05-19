@@ -101,8 +101,9 @@ def run_macs(f, subpeaks=True, path_to_macs=None, logging_level=10,
 
     input_file = f.input_file
     control_file = f.control_file    
-    logger.debug('Processing', input_file)
-    if control_file is not None: logger.debug('with control', control_file)
+    logger.debug('Processing %s', input_file)
+    if control_file is not None:
+        logger.debug('with control %s', control_file)
 
     # determine genome name and size
     if user_gsize:
@@ -133,7 +134,7 @@ def run_macs(f, subpeaks=True, path_to_macs=None, logging_level=10,
     step = [path_to_macs, 'callpeak'] + macs_options
     if platform.system() is 'Windows': step.insert(sys.executable, 0)
     
-    logger.debug('Launching', ' '.join(step))
+    logger.debug('Launching %s', ' '.join(step))
     job = Popen(step, stdout=PIPE, stderr=STDOUT, cwd=f.output_dir)
 
     stdout_buffer = '%s\n\n%s\n' % (' '.join(step), job.communicate()[0])

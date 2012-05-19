@@ -50,7 +50,7 @@ def MOODS_search(seq, motif, thresholds=0):
             cmp=lambda x,y: cmp(abs(x), abs(y)))
     return results_sorted_like_Bio_Motif
 
-def search_peak(peak_ID, peak, peakseq, motif, debug=False):
+def search_peak(peak_ID, peak, peakseq, motif):
     '''provide information about matches to a motif in a
     peak region, and about the region
     
@@ -178,7 +178,7 @@ def search_peak(peak_ID, peak, peakseq, motif, debug=False):
 
 def find_sites(peaks_file, fasta_file, motif, bed=True, xls=False,
                output_dir = None, motif_type = 'MEME',
-               src_fnc="find_sites", debug=False, **kwargs):
+               src_fnc="find_sites", **kwargs):
     '''
 findSites(peaks_file,FASTAfile,motif) takes the NAME_peaks.xls file outputed
 by MACS, as well as a FASTAfile, and finds instances of the motif specified by
@@ -262,8 +262,7 @@ Site (1) chr (2) start (3) end
     peaknumber = 0
     
     for peak in peak_generator:
-        if debug:
-            if peaknumber%10000 is 0: print peaknumber
+#            if peaknumber%10000 is 0: print peaknumber
         peaknumber += 1
         seq = peak_seqs.next()
         # Generate a peak ID
