@@ -1,4 +1,5 @@
 import scripter
+import os
 
 class BarcodeFilenameParser(scripter.FilenameParser):
     def __init__(self, filename, verbose=False, *args, **kwargs):

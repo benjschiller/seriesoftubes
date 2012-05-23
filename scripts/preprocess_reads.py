@@ -70,7 +70,7 @@ def main():
     e.do_action(splitter)
 
 def write_config(barcodes=None, max_length=None, strip_after_barcode=0,
-                 strip_before_barcode=0, linker=None,
+                 strip_before_barcode=0, linker=None, target_dir = os.curdir,
                  *args, **kwargs):
     config = SafeConfigParser()
     config.add_section('main')
@@ -82,7 +82,10 @@ def write_config(barcodes=None, max_length=None, strip_after_barcode=0,
         config.set('main', 'max-length', str(max_length))
     config.set('main', 'strip-after-barcode', str(strip_after_barcode))
     config.set('main', 'strip-before-barcode', str(strip_before_barcode))
-    with open('preprocess_reads.cfg', 'wb') as configfile:
+    config_f = os.path.join(target_dir, 'preprocess_reads.cfg')
+    if not os.path.exists(target_dir):
+        os.makedirs(target_dir, mode=0755)
+    with open(config_f, 'wb') as configfile:
         config.write(configfile)
 
 def read_config(setup_file):
@@ -189,9 +192,14 @@ def splitter(pf, **kwargs):
 def split_file(fp_obj, no_gzip=False,
                barcodes=None, linker=None, min_length=4,
                max_length=None, logger=None,
-               verbose=False, **kwargs):
+               **kwargs):
+    if logger is None: logger = scripter.get_logger()
+    logger.debug(fp_obj.__dict__)
     filename = fp_obj.input_file
-    open_func, format = discover_file_format(filename)
+    open_func, format_ = discover_file_format(filename)
+    if not format_ == 'FASTQ':
+        logger.error('Only FASTQ files are supported at this time')
+        return
     f = open_func(filename, "rU")
     records = FastqGeneralIterator(f)
     
@@ -408,11 +416,14 @@ def apply_plan(records, barcodes=None,
 def split_paired_files(fp_obj, no_gzip=False,
                        barcodes=None, linker=None,
                        min_length=4, logger=None,
-                       verbose=False, **kwargs):
+                       **kwargs):
     filename = fp_obj.input_file
     filename2 = fp_obj.second_file
-    open_func = discover_file_format(filename)[0]
-    open_func2 = discover_file_format(filename2)[0]
+    open_func, format1 = discover_file_format(filename)
+    open_func2, format2 = discover_file_format(filename2)
+    if not (format1 == 'FASTQ' and format2 == 'FASTQ'):
+        logger.error('Only FASTQ files are supported at this time')
+        return
     f = open_func(filename, "rU")
     f2 = open_func2(filename2, "rU")
     records = FastqGeneralIterator(f)
@@ -497,7 +508,7 @@ def split_paired_files(fp_obj, no_gzip=False,
     logger.info('%s sequences too short (1-3 bp)', too_short)
 
 
-def cleave_3prime_linker(record, linker='', verbose=False, **kwargs):
+def cleave_3prime_linker(record, linker='', **kwargs):
     """
     cleave_linker takes a record in the format
     (barcode, (title, seq, qual))

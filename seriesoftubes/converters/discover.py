@@ -13,7 +13,6 @@ def discover_file_format(filename):
     f.close()
     # check magic words for compression
     if head == '\x1f\x8b\x08':
-        print 'gzip'
         open_func = gzip.GzipFile
     elif head=='\x42\x5a\x68':
         open_func = bz2.BZ2File
@@ -32,6 +31,7 @@ def discover_file_format(filename):
     seq = uncompressed.readline()
     title2 = uncompressed.readline()
     qual = uncompressed.readline()
+    # illumina broke FASTQ convention, check for @
     if len(seq) == len(qual) and \
        (title.startswith('@') or title2.startswith('+')) and \
        (title2[1:].strip() == '' or title[1:] == title2[1:]):
