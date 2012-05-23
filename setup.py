@@ -51,7 +51,7 @@ def main():
 				'Programming Language :: Python :: 2.7',
 				'Topic :: Scientific/Engineering :: Bio-Informatics'
 				],
-		  dependency_links = ['https://github.com/downloads/benjschiller/MACS/benjschiller-MACS-v2.0.10pre1.zip#egg=MACS-2.0.10'],
+		  dependency_links = ['https://github.com/downloads/benjschiller/MACS/benjschiller-MACS-v2.0.10pre2.tar.gz#egg=MACS-2.0.10'],
 	      )
 if __name__ == '__main__':
 	main()
