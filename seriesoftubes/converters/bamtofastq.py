@@ -20,6 +20,7 @@ from subprocess import Popen, PIPE
 import subprocess
 from sys import argv, stdin, stdout, stderr, exit
 from gzip import GzipFile
+from .discover import PATH_TO_GZIP
 
 def main():
     """
@@ -30,7 +31,7 @@ def main():
     parser = ArgumentParser(description=__doc__)
     parser.add_argument('files', nargs='+', help='List of input files')
     parser.add_argument('--no-gzip',
-                        help='Do not compress the output files')
+                        help='Do not compress paired-end output files')
     parser.add_argument('--no-stdout',
                         help='Save single-end reads to text files too')
     args = parser.parse_args()
@@ -55,6 +56,13 @@ def read_files(files=None, no_gzip=False, no_stdout=False):
                 file2 = files + '_2.txt'
                 fh1 = open(file1, 'w')
                 fh2 = open(file2, 'w')
+            elif PATH_TO_GZIP is not None:
+                print 'Detected paired-end reads, redirecting output to .gz text files (using system gzip)'
+                file1 = file + '_1.txt.gz'
+                file2 = files + '_2.txt.gz'
+                open_func = gzip_class_factory(PATH_TO_GZIP)
+                fh1 = open_func(file1, 'wb')
+                fh2 = open_func(file2, 'wb')
             else:
                 print 'Detected paired-end reads, redirecting output to .gz text files'
                 file1 = file + '_1.txt.gz'

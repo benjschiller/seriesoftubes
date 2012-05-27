@@ -2,3 +2,8 @@
 /dist
 /seriesoftubes.egg-info
 /temp
+*.pyc
+.project
+.pydevproject
+.gitignore
+MANIFEST

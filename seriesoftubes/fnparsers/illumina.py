@@ -45,7 +45,7 @@ class BarcodeFilenameParser(scripter.FilenameParser):
 
     def output_filename(self, barcode, is_barcode=True, no_gzip=False):
         file_ext = self.file_extension
-        if no_gzip or file_ext == '.gz': end = '' 
+        if no_gzip: end = '' 
         else: end = '.gz'
         if is_barcode:
             return os.path.join(self.output_dir,
@@ -60,7 +60,7 @@ class BarcodeFilenameParser(scripter.FilenameParser):
             
     def output_filename2(self, barcode, is_barcode=True, no_gzip=False):
         file_ext = self.file_extension
-        if no_gzip or file_ext == '.gz': end = '' 
+        if no_gzip: end = '' 
         else: end = '.gz'
         if is_barcode:
             return os.path.join(self.output_dir,

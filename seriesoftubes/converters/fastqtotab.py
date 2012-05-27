@@ -28,21 +28,11 @@ def main():
     parser = ArgumentParser(description=__doc__)
     parser.add_argument('fastq_file_read1', help='File with either single reads or the first of paired reads')
     parser.add_argument('fastq_file_read2', nargs='?', help='(optional) File with second of paired reads')
-    parser.add_argument('--compression', nargs='?', default='auto', 
-                        choices=['none', 'gz', 'bz2'])
     args = parser.parse_args()
     context = vars(args)
     file1 = context['fastq_file_read1']
     file2 = context['fastq_file_read2']
-    comp = context['compression']
-    if comp == 'auto':
-        open_func = discover_file_format(file1)[1]
-    elif comp == 'none':
-        open_func = open
-    elif comp == 'gz':
-        open_func = GzipFile
-    elif comp == 'bz2':
-        open_func = BZ2File
+    open_func = discover_file_format(file1)[1]
     read_files(file1, file2, open_func)
 
 def read_files(file1, file2, open_func):

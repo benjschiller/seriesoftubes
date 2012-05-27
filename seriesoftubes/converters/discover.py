@@ -1,5 +1,45 @@
-import gzip
-import bz2
+from gzip import GzipFile
+from bz2 import BZ2File
+try:
+    from scripter import path_to_executable, Usage
+    from subprocess import Popen, PIPE
+    from io import TextIOBase
+    try: PATH_TO_GZIP = path_to_executable('gzip')
+    except Usage: pass
+except ImportError: pass
+
+# slow for reading, fast for writing
+def gzip_class_factory(path_to_gzip='gzip'):
+    class gzip_open_func(object): 
+        def __init__(self, filename, mode='r'):
+            if mode[0] == 'w':
+                args = [path_to_gzip, '-f', '-c', '-']
+                self.proc = Popen(args, stdin = PIPE,
+                                  stdout= open(filename, 'wb'))
+                self.write = self.proc.stdin.write
+                self.close = self._close_w
+#            elif mode[0] == 'r':
+#                args = [path_to_gzip, '-f', '-d', '-c', '-']
+#                self.proc = Popen(args, stdin = open(filename, 'rb'),
+#                                  stdout= PIPE)
+#                self.readline = self.proc.stdout.readline
+#                self.read = self.proc.stdout.read
+#                self.close = self._close_w
+            elif mode[0] == 'r':
+                self._file = GzipFile(filename, 'rb')
+                self.read = self._file.read
+                self.readline = self._file.readline
+                self.close = self._file.close
+            else:
+                raise NotImplementedError
+            
+        def _close_w(self):
+            """returns returncode
+            """
+#            self.proc.stdout.close()
+            return self.proc.communicate('\x1a')
+        
+    return gzip_open_func
 
 def discover_file_format(filename):
     """discover the format of a file
@@ -13,17 +53,20 @@ def discover_file_format(filename):
     f.close()
     # check magic words for compression
     if head == '\x1f\x8b\x08':
-        open_func = gzip.GzipFile
+        if PATH_TO_GZIP is None:
+            open_func = GzipFile
+        else:
+            open_func = gzip_class_factory(PATH_TO_GZIP)
     elif head=='\x42\x5a\x68':
-        open_func = bz2.BZ2File
+        open_func = BZ2File
     else:
         open_func = open
     uncompressed = open_func(filename)
     head2 = uncompressed.read(4)
+    head2b = uncompressed.readline()
     # check for BAM
     if head2 == 'BAM\x01': return (open_func, 'BAM')
     # check for SAM 
-    head2b = uncompressed.readline()
     if head2 == '@HD\t':
         if head2b[0:3] == 'VN:': return (open_func, 'SAM')
     # check fastq
