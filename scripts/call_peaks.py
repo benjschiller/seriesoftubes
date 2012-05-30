@@ -6,19 +6,18 @@ use --config to specify file with matched sample/controls
 from ConfigParser import ConfigParser
 import sys
 from errno import ENOENT, EACCES
-from os import access, extsep, strerror, R_OK, getcwd, getenv, listdir, makedirs
+from os import access, extsep, strerror, R_OK, getcwd, getenv, listdir, makedirs, curdir
 from os.path import exists, join, splitext
 import platform
 from subprocess import Popen, STDOUT, PIPE
 import pysam
 from scripter import Environment, path_to_executable, get_logger, Usage, \
-                     exit_on_Usage, construct_target
+                     exit_on_Usage
 from seriesoftubes.fnparsers import BAMFilenameParser
 from bioplus.genometools import guess_bam_genome, genome, NoMatchFoundError, TemporaryGenomeFile
 from pkg_resources import get_distribution, VersionConflict
 __version__ = get_distribution('seriesoftubes').version
 VERSION = __version__
-TARGET_DIR = 'peaks'
 MACS_VERSION = get_distribution('MACS>=2.0.10').version
 
 def main():
@@ -40,8 +39,7 @@ def main():
     e.set_config_writer(write_setup_file)
     e.do_action(run_macs)
     
-def write_setup_file(controls=None, target=TARGET_DIR, *args, **kwargs):
-    target_dir = construct_target(target)
+def write_setup_file(controls=None, target_dir=curdir, *args, **kwargs):
     makedirs(target_dir, mode=0755)
     setup_file = open(join(target_dir, 'setup.txt'), 'w')
     setup_file.write('#%s\n' % ' '.join(sys.argv))
