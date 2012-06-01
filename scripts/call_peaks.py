@@ -107,7 +107,7 @@ def run_macs(f, subpeaks=True, path_to_macs=None, logging_level=10,
     if user_gsize:
         genome_size = user_gsize
         try: genome_build = guess_bam_genome(input_file)
-        except NoMatchFoundError: genome_build is None
+        except NoMatchFoundError: genome_build = None
     else:
         try: genome_build = guess_bam_genome(input_file)
         except NoMatchFoundError:
