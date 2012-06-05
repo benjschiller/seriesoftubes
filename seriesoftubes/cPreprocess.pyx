@@ -122,7 +122,7 @@ cdef char *match_barcode(char *seq, list barcodes, int mismatches=1):
         if seq_len < barcode_length: continue
         hamming = 0
         for j in range(barcode_length):
-            if barcode[i] != seq[i]: hamming += 1
+            if barcode[j] != seq[j]: hamming += 1
         if mismatches > hamming:
             if accepted == b'': accepted = barcode
             else: return b''
@@ -216,16 +216,19 @@ cdef Record assign_read(Read read, list barcodes):
         return record
     title_head, last_part = read.title.rsplit(':', 1)
     pound_loc = last_part.find('#')
-    slash_loc = pound_loc + last_part[pound_loc:].find('/')
-    barcode = <bytes>last_part[pound_loc+1:slash_loc]
-    if barcode==<bytes>'0':
-        record.barcode = match_barcode(read.seq, barcodes) 
-        barcode_len = len(<bytes>record.barcode)
+    slash_loc = last_part[pound_loc:].find('/')
+    if slash_loc != -1:
+        barcode = <bytes>last_part[(pound_loc+1):(pound_loc+slash_loc)]
+    else:
+        barcode = <bytes>last_part[(pound_loc+1):]
+    if barcode==b'0':
+        record.barcode = match_barcode(read.seq, barcodes)
+        barcode_len = len(record.barcode)
         record.read.seq += barcode_len
         record.read.qual += barcode_len
         if not record.barcode == <bytes>'':
-            last_part = last_part[0:pound_loc+1] + barcode + last_part[slash_loc:]
-            record.read.title = <bytes> ('%s:%s' %( title_head , last_part ))
+            last_part = last_part[0:(pound_loc+1)] + barcode + last_part[(pound_loc+slash_loc):]
+            record.read.title = <bytes>('%s:%s' %( title_head , last_part ))
     elif barcode.isdigit():
         # then we have a numbered index from Illumina, just use it as-is
         record.barcode = barcode
@@ -233,7 +236,7 @@ cdef Record assign_read(Read read, list barcodes):
         # then we already extracted the barcode at some point, try to match it
         record.barcode = match_barcode(barcode, barcodes)
     else:
-        record.barcode = ''
+        record.barcode = b''
     return record
 
 cdef bool too_short(Read read, int min_length):
@@ -425,7 +428,6 @@ cdef Record apply_plan_to_read(tuple t, list barcodes, char *linker,
     cdef:
         Record record
         Read read
-        int n_barcodes = len(barcodes)
     read = as_read(t[0], t[1], t[2])
     if strip_before_barcode > 0:
         read = pretrim_record_5prime(read, strip_before_barcode)

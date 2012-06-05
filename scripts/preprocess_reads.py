@@ -166,7 +166,6 @@ def split_file(fp_obj, no_gzip=False,
     writer_args = {'barcoded_files': barcoded_files,
               'unmatched_file': unmatched_file,
               'processed_file': processed_file}
-    barcodes = []
     results = apply_plan(records, writer_args, barcodes=barcodes, linker=linker,
                                min_length=min_length, max_length=max_length,
                                strip_after_barcode=strip_after_barcode,
@@ -175,13 +174,17 @@ def split_file(fp_obj, no_gzip=False,
     linker_only = results['linker']
     too_short = results['short']
     record_count = results['all']
-    
     # close and exit #
     f.close()
     if barcoded_files is not None:
+        logger.debug('closing barcoded files')
         for f_ in barcoded_files.values(): f_.close()
-    if unmatched_file is not None: unmatched_file.close()
-    if processed_file is not None: processed_file.close()
+    if unmatched_file is not None:
+        logger.debug('closing unmatched file')
+        unmatched_file.close()
+    if processed_file is not None:
+        logger.debug('closing output file')
+        processed_file.close()
     
     logger.info('Split %s as %s ', fp_obj.input_file, ', '.join(filenames))
     logger.info('Processed %s records', record_count)
@@ -275,7 +278,7 @@ def split_paired_files(fp_obj, no_gzip=False,
                             logger=logger)
     linker_only = results['linker']
     too_short = results['short']
-    record_count =results['all']
+    record_count = results['all']
 
     # close and exit #
     f.close()

@@ -7,6 +7,7 @@ try:
     try: PATH_TO_GZIP = path_to_executable('gzip')
     except Usage: pass
 except ImportError: pass
+from sys import stderr
 
 # slow for reading, fast for writing
 def gzip_class_factory(path_to_gzip='gzip'):
@@ -14,10 +15,15 @@ def gzip_class_factory(path_to_gzip='gzip'):
         def __init__(self, filename, mode='r'):
             if mode[0] == 'w':
                 args = [path_to_gzip, '-f', '-c', '-']
-                self.proc = Popen(args, stdin = PIPE,
-                                  stdout= open(filename, 'wb'))
+                stdout = open(filename, 'wb')
+                self._stdout = stdout
+                self.proc = Popen(args, stdin = PIPE, bufsize=0,
+                                  stderr=stderr,
+                                  stdout=stdout)
                 self.write = self.proc.stdin.write
+#                self.write = self._fakewrite
                 self.close = self._close_w
+                self.filename = filename
 #            elif mode[0] == 'r':
 #                args = [path_to_gzip, '-f', '-d', '-c', '-']
 #                self.proc = Popen(args, stdin = open(filename, 'rb'),
@@ -32,12 +38,22 @@ def gzip_class_factory(path_to_gzip='gzip'):
                 self.close = self._file.close
             else:
                 raise NotImplementedError
-            
+        
+#        def _fakewrite(self, x):
+#            print x
+#            if x.count('\x1a') > 0:
+#                raise ValueError(x)
+#            self.proc.stdin.write(x)
+        
         def _close_w(self):
             """returns returncode
             """
-#            self.proc.stdout.close()
-            return self.proc.communicate('\x1a')
+            self.proc.stdin.flush()
+            self._stdout.flush()
+#            self.proc.stdout.flush()
+            self._stdout.close()
+#            self.proc.communicate('\x1a')
+            return
         
     return gzip_open_func
 
