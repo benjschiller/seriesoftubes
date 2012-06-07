@@ -163,7 +163,10 @@ def align_once(fp_obj, flags, ref, match_type, use_quality=False,
     if use_quality:
         if fp_obj.use_pysam: flags.append('--phred33-quals')
         else: flags.append(''.join(['--', quals_type, '-quals']))
-    file_args = [ref, '--12', '-']
+    if fb_pbj.paired_end:
+        file_args = [ref, '--12', '-']
+    else:
+        file_args = [ref, '-']
     bowtie_args = [path_to_bowtie] + flags + file_args
     logger.info('Launching botwie (output will be sent to PIPE)')
     logger.info(' '.join(bowtie_args))
