@@ -32,7 +32,7 @@ def main():
     context = vars(args)
     file1 = context['fastq_file_read1']
     file2 = context['fastq_file_read2']
-    open_func = discover_file_format(file1)[1]
+    open_func = discover_file_format(file1)[0]
     read_files(file1, file2, open_func)
 
 def read_files(file1, file2, open_func):

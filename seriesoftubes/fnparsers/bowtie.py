@@ -89,7 +89,9 @@ class BowtieFilenameParser(scripter.FilenameParser):
             else:
                 scripter.debug('Failed to find paired end')
                 self.paired_end = False
-        else: self.paired_end = False
+        else:
+            scripter.debug('This file contains single-end reads.')
+            self.paired_end = False
 
     def tmp_filename(self, ref, match_type):
         return os.path.join(self.output_dir, ref, match_type,
