@@ -12,12 +12,15 @@ In reference folder, there will be a folder for unique or random alignments
 import pysam
 import logging
 import os
+from os import getcwd
+from os.path import join
 import sys
+from tempfile import mkdtemp
 from subprocess import Popen, PIPE
 import scripter
 from scripter import assert_path, path_to_executable, Usage, \
                      exit_on_Usage, InvalidFileException, get_logger, \
-                     Environment
+                     Environment, critical, debug
 from seriesoftubes.tubes.polledpipe import PolledPipe
 from seriesoftubes.tubes import wait_for_job
 from seriesoftubes.fnparsers import BowtieFilenameParser
@@ -60,9 +63,33 @@ def main():
                         help='specify maximum quality scores of all mismatched positions (default is 70), ignored in -v mode')
     parser.add_argument('--seed-length', default='28',
                         help='use seed length of m (default is 28)')
+    context = e.get_context()
+    new_references = validate_references(**context)
+    e.update_context({'references': new_references})
     e.do_action(align)
 
-        
+def validate_references(references=None, path_to_bowtie='bowtie',
+                        logger=None, **kwargs):
+    debug('Validating references')
+    new_references = []
+    for r in references:
+        args = [path_to_bowtie, r, 'foo_does_not_exist.fakefile']
+        P = Popen(args, stderr=PIPE, cwd=mkdtemp())
+        err_msg = P.communicate()[1].splitlines()[0]
+        if err_msg.find('Bowtie index') != -1:
+            # try current working directory, complain on failure
+            rprime = join(getcwd(), r) 
+            args = [path_to_bowtie, rprime, 'foo_does_not_exist.fakefile']
+            P = Popen(args, stderr=PIPE, cwd=mkdtemp())
+            err_msg = P.communicate()[1].splitlines()[0]
+            if err_msg.find('Bowtie index') != -1:
+                critical('bowtie could not find the index for %s', r)
+                critical('we will not align to %s', r)
+            else:
+                new_references.append(rprime)
+        else:
+            new_references.append(r)
+    return new_references
 
 @exit_on_Usage
 def align(fp_obj, references=[], random=True, unique=True, max_quality='70',
@@ -103,7 +130,8 @@ def align_once(fp_obj, flags, ref, match_type, use_quality=False,
                quals_type='solexa1.3',
                path_to_bowtie= None, path_to_samtools=None, logger=None,
                **kwargs):
-    path_to_unsorted = fp_obj.tmp_filename(ref, match_type)
+    refname = os.path.basename(ref)
+    path_to_unsorted = fp_obj.tmp_filename(refname, match_type)
     output_dir = os.path.split(path_to_unsorted)[0]
     fp_obj.check_output_dir(output_dir)
     filename1 = os.path.abspath(fp_obj.input_file)

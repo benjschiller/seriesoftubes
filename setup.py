@@ -25,7 +25,7 @@ except ImportError:
     command_classes =  {}
 
 name = 'seriesoftubes'
-version = '0.9.3.3'
+version = '0.9.3.4'
 
 def main():
     if not float(sys.version[:3])>=2.7:
@@ -42,7 +42,7 @@ def main():
           author_email='benjamin.schiller@ucsf.edu',
           url = 'https://github.com/benjschiller/seriesoftubes',
             cmdclass= command_classes,
-            install_requires = ['scripter>=3.2.2',
+            install_requires = ['scripter>=3.3.0',
     						  'biopython>=1.56',
     				          'pysam>=0.4',
     				          'twobitreader>=2.5',
