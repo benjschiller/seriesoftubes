@@ -13,6 +13,7 @@ from sys import stderr
 def gzip_class_factory(path_to_gzip='gzip'):
     class gzip_open_func(object): 
         def __init__(self, filename, mode='r'):
+            self._mode = mode[0]
             if mode[0] == 'w':
                 args = [path_to_gzip, '-f', '-c', '-']
                 stdout = open(filename, 'wb')
@@ -24,13 +25,6 @@ def gzip_class_factory(path_to_gzip='gzip'):
 #                self.write = self._fakewrite
                 self.close = self._close_w
                 self.filename = filename
-#            elif mode[0] == 'r':
-#                args = [path_to_gzip, '-f', '-d', '-c', '-']
-#                self.proc = Popen(args, stdin = open(filename, 'rb'),
-#                                  stdout= PIPE)
-#                self.readline = self.proc.stdout.readline
-#                self.read = self.proc.stdout.read
-#                self.close = self._close_w
             elif mode[0] == 'r':
                 self._file = GzipFile(filename, 'rb')
                 self.read = self._file.read
@@ -44,6 +38,10 @@ def gzip_class_factory(path_to_gzip='gzip'):
 #            if x.count('\x1a') > 0:
 #                raise ValueError(x)
 #            self.proc.stdin.write(x)
+        def __iter__(self):
+            if not self._mode == 'r':
+                raise IOError('cannot iterate over file in write mode')
+            return self._file.__iter__()
         
         def _close_w(self):
             """returns returncode
