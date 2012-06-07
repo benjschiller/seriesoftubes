@@ -149,8 +149,7 @@ def align_once(fp_obj, flags, ref, match_type, use_quality=False,
         input_stream = Popen(in_args, stdout=PIPE, stderr=input_stderr.w,
                              bufsize=-1)
     else:
-        logger.debug('Automagically interpreting FASTQ file (compression is %s)',
-                     compression)
+        logger.debug('Automagically interpreting FASTQ file')
         in_args = [sys.executable, '-m',
                    'seriesoftubes.converters.fastqtotab',
                    filename1]
