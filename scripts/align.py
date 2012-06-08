@@ -22,7 +22,7 @@ from scripter import assert_path, path_to_executable, Usage, \
                      exit_on_Usage, InvalidFileException, get_logger, \
                      Environment, critical, debug
 from seriesoftubes.tubes.polledpipe import PolledPipe
-from seriesoftubes.tubes import wait_for_job, run_job
+from seriesoftubes.tubes import wait_for_job
 from seriesoftubes.fnparsers import BowtieFilenameParser
     
 from pkg_resources import get_distribution
@@ -138,47 +138,38 @@ def align_once(fp_obj, flags, ref, match_type, use_quality=False,
     second_file = fp_obj.second_file
     if second_file is not None: filename2 = os.path.abspath(second_file)
     else: filename2 = None
-    
-    # finish parsing input here
-    readable_input = None
-    if fp_obj.use_pysam:
-        input_stderr = PolledPipe(logger=logger, level=logging.ERROR)
-        logger.info('Automagically interpreting SAM/BAM file')
-        in_args = [sys.executable, '-m', 'seriesoftubes.converters.bamtotab',
-                   filename1]
-        logger.info(' '.join(in_args))
-        input_reader = Popen(in_args, stdout=PIPE, stderr=input_stderr.w,
-                             bufsize=-1)
-        input_stream = input_reader.stdout
-    elif fp_obj.paired_end:
-        input_stderr = PolledPipe(logger=logger, level=logging.ERROR)
-        logger.debug('Automagically piping FASTQ files')
-        in_args = [sys.executable, '-m',
-                   'seriesoftubes.converters.fastqtotab',
-                   filename1, filename2]
-        logger.info(' '.join(in_args))
-        input_reader = Popen(in_args, stdout=PIPE, stderr=input_stderr.w,
-                             bufsize=-1)
-        input_stream = input_reader.stdout
-    else:
-        input_stderr = None
-        directly_inject = True
-        logger.debug('Automagically piping FASTQ file')
-        input_stream = PIPE
-        readable_input = fp_obj.open_func(fp_obj.input_file)
-    
     if use_quality:
         if fp_obj.use_pysam: flags.append('--phred33-quals')
         else: flags.append(''.join(['--', quals_type, '-quals']))
     if fp_obj.paired_end:
         file_args = [ref, '--12', '-']
+        logger.info('Automagically interpreting %s files', fp_obj.format)
     else:
+        logger.info('Automagically interpreting %s file', fp_obj.format)
         file_args = [ref, '-']
     bowtie_args = [path_to_bowtie] + flags + file_args
-    logger.info('Launching botwie (output will be sent to PIPE)')
-    logger.info(' '.join(bowtie_args))
+    
+    # finish parsing input here
+    input_stderr = PolledPipe(logger=logger, level=logging.ERROR)
     bowtie_stderr = PolledPipe(logger=logger, level=logging.ERROR)
-    bowtie_aligner = Popen(bowtie_args, stdin=input_stream,
+    if fp_obj.use_pysam:
+        in_args = [sys.executable, '-m', 'seriesoftubes.converters.bamtotab',
+                   filename1]
+    elif fp_obj.paired_end and fp_obj.format =='FASTQ':
+        in_args = [sys.executable, '-m', 'seriesoftubes.converters.fastqtotab',
+                   filename1, filename2]
+    elif fp_obj.format == 'FASTQ':
+        in_args = [sys.executable, '-m', 'seriesoftubes.converters.cat',
+                   filename1]
+    else:
+        logger.critical("Couldn't figure out what to do with file %s of format %s",
+                        fp_obj.input_file, fp_obj.format)
+    logger.info(' '.join(in_args))
+    input_reader = Popen(in_args, stdout=PIPE, stderr=input_stderr.w,
+                         bufsize=-1)
+    logger.info('Launching botwie (output will be piped to samtools)')
+    logger.info(' '.join(bowtie_args))
+    bowtie_aligner = Popen(bowtie_args, stdin=input_reader.stdout,
                            stdout=PIPE, stderr=bowtie_stderr.w,
                            bufsize=-1)
     
@@ -189,16 +180,12 @@ def align_once(fp_obj, flags, ref, match_type, use_quality=False,
     samtools_stdout = PolledPipe(logger=logger, level=logging.WARN)
     samtools_stderr = PolledPipe(logger=logger, level=logging.ERROR)
     samtools_viewer = Popen(samtools_args, stdin=bowtie_aligner.stdout,
-                            stdout=samtools_stdout.w,
+                            stdout=sys.stdout,
                             stderr=samtools_stderr.w, bufsize=-1)
     
     logger.debug('Waiting for bowtie to finish')
-    pollables = [bowtie_stderr, samtools_stdout, samtools_stderr]
-    if input_stderr is not None: pollables.append(input_stderr)
-    if readable_input is None:
-        wait_for_job(bowtie_aligner, pollables, logger)
-    else:
-        run_job(bowtie_aligner, readable_input, pollables, logger)
+    pollables = [input_stderr, bowtie_stderr, samtools_stdout, samtools_stderr]
+    wait_for_job(bowtie_aligner, pollables, logger)
     
     if not bowtie_aligner.returncode == 0:
         logger.critical("bowtie did not run properly [%d]",

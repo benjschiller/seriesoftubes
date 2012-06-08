@@ -4,17 +4,8 @@ NAME    SEQ1    QUAL1    (SEQ2    QUAL2)
 
 Output is always to stdout (err goes to stderr, redirect it if you need to)
 """
-import pysam
-import os
-import select
-from gzip import GzipFile
-from bz2 import BZ2File
-from scripter import path_to_executable 
 from argparse import ArgumentParser
-from copy import copy
-from subprocess import Popen, PIPE
-import subprocess
-from sys import argv, stdin, stdout, stderr, exit
+from sys import exit
 from .discover import discover_file_format
 from itertools import izip
 

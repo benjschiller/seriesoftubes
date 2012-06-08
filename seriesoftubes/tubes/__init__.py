@@ -3,8 +3,8 @@ contains useful functions and classes for stringing together input and output
 via pipes and converting data formats on the fly
 """
 from polledpipe import PolledPipe
-from cTubes import wait_for_job, run_job
-__all__ = ['PolledPipe', 'wait_for_job', 'run_job']
+from cTubes import wait_for_job
+__all__ = ['PolledPipe', 'wait_for_job']
 #from time import time, sleep
 
 #def wait_for_job(job, logs=[], logger=None):

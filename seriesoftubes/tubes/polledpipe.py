@@ -31,10 +31,9 @@ class PolledPipe(object):
         self.w = w
         self._poll = select.poll()
         self._poll.register(r)
-        return
     
     def poll(self, timeout=0):
-        self._poll.poll(timeout)
+        return self._poll.poll(timeout)
         
     def readlines(self, timeout=0):
         results = self.poll(timeout)
@@ -60,6 +59,14 @@ class PolledPipe(object):
             raise RuntimeWarning('PolledPipe did not have a logger attached')
         if level is None: level = self._level
         if level is None: level = logging.ERROR
-        for line in self.readlines():
-            self._logger.log(level, line)
+        while True:
+            for line in self.readlines():
+                self._logger.log(level, line.rstrip())
+            results = self.poll()
+            if results is None: break
+            if len(results) == 0: break
+            event = results[0][1]
+            if (event & select.POLLIN) == select.POLLIN or \
+               (event & select.POLLPRI) == select.POLLPRI: continue
+            else: break
         return
