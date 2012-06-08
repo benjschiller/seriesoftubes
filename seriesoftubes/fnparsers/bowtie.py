@@ -4,11 +4,14 @@ import os.path
 import gzip
 import bz2
 import scripter
+from ..converters.discover import discover_file_format
 
 class BowtieFilenameParser(scripter.FilenameParser):
     def __init__(self, filename, *args, **kwargs):
         super(BowtieFilenameParser, self).__init__(filename, *args, **kwargs)
-        compression, format = self.discover_file_format2(filename)
+        open_func, format = discover_file_format(filename)
+        self.format = format
+        self.open_func = open_func
         if format == 'SAM' or format == 'BAM':
             self.use_pysam = True
             # try to open the file so we're sure it works
@@ -16,7 +19,6 @@ class BowtieFilenameParser(scripter.FilenameParser):
             del f
         elif format == 'FASTQ':
             self.use_pysam = False
-            self.compression = compression
         else:
             raise RuntimeError('Dubious file format')
         self.second_file = None
@@ -26,41 +28,6 @@ class BowtieFilenameParser(scripter.FilenameParser):
         else:
             self.fastq_source = 'Unknown'
     
-    @staticmethod
-    def discover_file_format2(filename):
-        f = open(filename, 'rb')
-        head = f.read(3)
-        f.close()
-        # check magic words for compression
-        if head == '\x1f\x8b\x08':
-            compression = 'gz'
-            open_func = gzip.GzipFile
-        elif head=='\x42\x5a\x68':
-            open_func = bz2.BZ2File
-            compression = 'bz2'
-        else:
-            open_func = open
-            compression = 'none'
-        uncompressed = open_func(filename)
-        head2 = uncompressed.read(4)
-        # check for BAM
-        if head2 == 'BAM\x01': return (compression, 'BAM')
-        # check for SAM 
-        head2b = uncompressed.readline()
-        if head2 == '@HD\t':
-            if head2b[0:3] == 'VN:': return (compression, 'SAM')
-        # check FASTQ
-        title = head2 + head2b
-        seq = uncompressed.readline()
-        title2 = uncompressed.readline()
-        qual = uncompressed.readline()
-        if len(seq) == len(qual) and \
-           (title.startswith('@') or title2.startswith('+')) and \
-           (title2[1:].strip() == '' or title[1:] == title2[1:]):
-            return (compression, 'FASTQ')
-        # otherwise give up
-        else: return (None, None)
-            
     def check_paired_end(self):
         # check if this is a paired-end file
         # if so, grab its partner

@@ -3,6 +3,7 @@ from bz2 import BZ2File
 try:
     from scripter import path_to_executable, Usage
     from subprocess import Popen, PIPE
+    from os import pipe
     from io import TextIOBase
     try: PATH_TO_GZIP = path_to_executable('gzip')
     except Usage: pass
@@ -11,7 +12,13 @@ from sys import stderr
 
 # slow for reading, fast for writing
 def gzip_class_factory(path_to_gzip='gzip'):
-    class gzip_open_func(object): 
+    class gzip_open_func(object):
+        """gzip open func
+        modes:
+        (r) read using gzip.GzipFile
+        (w) write using system gzip
+        (P) PIPE from `gzip -d` for 
+        """
         def __init__(self, filename, mode='r'):
             self._mode = mode[0]
             if mode[0] == 'w':

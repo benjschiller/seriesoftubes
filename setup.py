@@ -25,7 +25,7 @@ except ImportError:
     command_classes =  {}
 
 name = 'seriesoftubes'
-version = '0.9.3.5'
+version = '0.9.4.0'
 
 def main():
     if not float(sys.version[:3])>=2.7:
@@ -33,8 +33,10 @@ def main():
           
     if has_cython:
         ext_modules=[Extension('seriesoftubes.cPreprocess', ["seriesoftubes/cPreprocess.pyx"])]
+        ext_modules=[Extension('seriesoftubes.tubes.cTubes', ["seriesoftubes/tubes/cTubes.pyx"])]
     else:
         ext_modules=[Extension('seriesoftubes.cPreprocess', ["seriesoftubes/cPreprocess.c"])]
+        ext_modules=[Extension('seriesoftubes.tubes.cTubes', ["seriesoftubes/tubes/cTubes.c"])]
           
     setup(name=name, version = version,
           description='An extended pipeline for Solexa ChIP-seq data',
