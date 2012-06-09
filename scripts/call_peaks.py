@@ -74,10 +74,16 @@ def read_setup_file(setup_file):
 def decide_format(input_file, control_file, logger=None): 
     # See if we have paired-end files
     s = pysam.Samfile(input_file)
-    is_paired = [s.next().is_paired for i in xrange(100000)]
+    try:
+        is_paired = [s.next().is_paired for i in xrange(100000)]
+    except StopIteration:
+        is_paired = [r.is_paired for r in s]
     if control_file is not None:
         t = pysam.Samfile(control_file)
-        is_paired_control = [s.next().is_paired for i in xrange(100000)]
+        try:
+            is_paired_control = [s.next().is_paired for i in xrange(100000)]
+        except StopIteration:
+            is_paired = [r.is_paired for r in s]
     else:
         is_paired_control = [True]
     if all(is_paired) and all(is_paired_control):
