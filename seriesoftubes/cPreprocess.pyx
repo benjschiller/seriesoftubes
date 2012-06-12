@@ -215,6 +215,10 @@ cdef Record assign_read(Read read, list barcodes):
         record.barcode = b''
         return record
     title_head, last_part = read.title.rsplit(':', 1)
+    if last_part.isalpha():
+        # CASAVA 1.8 file
+        record.barcode = match_barcode(<bytes>last_part.rstrip(), barcodes)
+        return record 
     pound_loc = last_part.find('#')
     slash_loc = last_part[pound_loc:].find('/')
     if slash_loc != -1:
