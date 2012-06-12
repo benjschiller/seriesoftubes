@@ -13,43 +13,42 @@ All rights reserved.
 
 import os
 import sys
-from distutils.core import setup
-from distutils.extension import Extension
+from setuptools import setup,Extension
+#from distutils.core import setup
+#from distutils.extension import Extension
 
-has_cython = True
 try:
     import Cython.Distutils
     command_classes = {'build_ext': Cython.Distutils.build_ext}
 except ImportError:
-    has_cython = False
     command_classes =  {}
 
 name = 'seriesoftubes'
-version = '0.9.3.6'
+version = '0.9.4.2'
 
 def main():
     if not float(sys.version[:3])>=2.7:
     	sys.exit("CRITICAL: Python version must greater than or equal to 2.7! python 2.7.2 is recommended!\n")
           
-    if has_cython:
-        ext_modules=[Extension('seriesoftubes.cPreprocess', ["seriesoftubes/cPreprocess.pyx"])]
-        ext_modules=[Extension('seriesoftubes.tubes.cTubes', ["seriesoftubes/tubes/cTubes.pyx"])]
-    else:
-        ext_modules=[Extension('seriesoftubes.cPreprocess', ["seriesoftubes/cPreprocess.c"])]
-        ext_modules=[Extension('seriesoftubes.tubes.cTubes', ["seriesoftubes/tubes/cTubes.c"])]
+
+    ext_modules=[Extension('seriesoftubes.cPreprocess', ["seriesoftubes/cPreprocess.pyx"]),
+                 Extension('seriesoftubes.tubes.cTubes', ["seriesoftubes/tubes/cTubes.pyx"])]
           
     setup(name=name, version = version,
+          use_cython=True,
           description='An extended pipeline for Solexa ChIP-seq data',
           author='Benjamin Schiller',
           author_email='benjamin.schiller@ucsf.edu',
           url = 'https://github.com/benjschiller/seriesoftubes',
             cmdclass= command_classes,
-            install_requires = ['scripter>=3.3.0',
-    						  'biopython>=1.56',
-    				          'pysam>=0.4',
-    				          'twobitreader>=2.5',
-    				          'MACS>=2.0.10'
-    				         ],
+            install_requires = ['cython>=0.12',
+                                'distribute>0.6.16',
+                                'scripter>=3.3.0',
+                                'biopython>=1.56',
+                                'pysam>=0.4',
+                                'twobitreader>=2.5',
+                                'MACS==2.0.10pre3'
+                               ],
           packages = ['bioplus', 'seriesoftubes', 'seriesoftubes.converters',
     				  'seriesoftubes.fnparsers', 'seriesoftubes.tubes'],
     	  package_data= {'bioplus': ['data/genomes.db']},
@@ -71,7 +70,7 @@ def main():
     			'Programming Language :: Python :: 2.7',
     			'Topic :: Scientific/Engineering :: Bio-Informatics'
     			],
-    	  dependency_links = ['https://github.com/downloads/benjschiller/MACS/benjschiller-MACS-v2.0.10pre2.tar.gz#egg=MACS-2.0.10'],
+    	  dependency_links = ['https://github.com/downloads/benjschiller/MACS/MACS2-v2.0.10-pre3.tar.gz#egg=MACS-2.0.10pre3'],
           )
 if __name__ == '__main__':
 	main()

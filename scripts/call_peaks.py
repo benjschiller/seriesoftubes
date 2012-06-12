@@ -18,7 +18,7 @@ from bioplus.genometools import guess_bam_genome, genome, NoMatchFoundError, Tem
 from pkg_resources import get_distribution, VersionConflict
 __version__ = get_distribution('seriesoftubes').version
 VERSION = __version__
-MACS_VERSION = get_distribution('MACS>=2.0.10').version
+MACS_VERSION = get_distribution('MACS==2.0.10pre3').version
 
 def main():
     e = Environment(doc=__doc__, version=VERSION)

@@ -145,7 +145,8 @@ def split_file(fp_obj, no_gzip=False,
     elif PATH_TO_GZIP is not None:
         open_func = gzip_class_factory(PATH_TO_GZIP)
     else: open_func = GzipFile
-    if barcodes is not None:
+    if barcodes is None: barcodes = []
+    if len(barcodes) > 0:
         processed_file = None
         for barcode in barcodes:
             fname = output_filename(barcode)
@@ -221,7 +222,8 @@ def split_paired_files(fp_obj, no_gzip=False,
         open_func = GzipFile
     output_filename = partial(fp_obj.output_filename, no_gzip=no_gzip)
     output_filename2 = partial(fp_obj.output_filename2, no_gzip=no_gzip)
-    if barcodes is not None:
+    if barcodes is None: barcodes = []
+    if len(barcodes) > 0:
         processed_files = None
         orphaned_read_files = None
         for barcode in barcodes:

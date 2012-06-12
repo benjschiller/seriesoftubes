@@ -153,8 +153,12 @@ def align_once(fp_obj, flags, ref, match_type, use_quality=False,
     input_stderr = PolledPipe(logger=logger, level=logging.ERROR)
     bowtie_stderr = PolledPipe(logger=logger, level=logging.ERROR)
     if fp_obj.use_pysam:
-        in_args = [sys.executable, '-m', 'seriesoftubes.converters.bamtotab',
-                   filename1]
+        if fp_obj.paired_end:
+            in_args = [sys.executable, '-m', 'seriesoftubes.converters.bamtotab',
+                       filename1]
+        else:
+            in_args = [sys.executable, '-m', 'seriesoftubes.converters.bamtofastq',
+                       filename1]
     elif fp_obj.paired_end and fp_obj.format =='FASTQ':
         in_args = [sys.executable, '-m', 'seriesoftubes.converters.fastqtotab',
                    filename1, filename2]
