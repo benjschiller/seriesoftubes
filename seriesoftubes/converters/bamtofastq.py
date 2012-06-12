@@ -80,6 +80,7 @@ def read_files(files=None, no_gzip=False, no_stdout=False):
                 elif aread.is_read2: fh2.write(rec)
                 else: raise ValueError("This shouldn't happen")
         else:
+            fh2 = None
             if no_stdout:
                 print 'Redirecting output to text files'
                 file1 = file + '.txt'
