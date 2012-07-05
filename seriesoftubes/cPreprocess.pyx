@@ -8,7 +8,6 @@ cdef struct int_pair:
     int left
     int right
 
-#
 def FasterFastqIterator(fastq_handle):
     """Cython-ized version of FastqGeneralIterator
     """
@@ -87,9 +86,22 @@ cdef struct Read:
     char *seq
     char *qual
 
+cdef Read asRead(str title, str seq, str qual):
+    cdef Read read
+    read.title = <bytes>title
+    read.seq = <bytes>seq
+    read.qual = <bytes>qual
+    return read
+
 cdef struct Record:
     char *barcode
     Read read
+
+cdef Record asRecord(str barcode, str title, str seq, str qual):
+    cdef Record record
+    record.barcode = <bytes>barcode
+    record.read = asRead(title, seq, qual)
+    return record
 
 cdef struct RecordPair:
     Record first

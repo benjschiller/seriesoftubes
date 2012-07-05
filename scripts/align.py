@@ -61,7 +61,7 @@ def main():
                         help='Valid options are integer, solexa1.3, solexa, phred33, or phred64 (see bowtie for more info)')
     parser.add_argument('--max-quality', default='70',
                         help='specify maximum quality scores of all mismatched positions (default is 70), ignored in -v mode')
-    parser.add_argument('--seed-length', default='28',
+    parser.add_argument('--seed-length', dest='seed_len', default='28',
                         help='use seed length of m (default is 28)')
     context = e.get_context()
     new_references = validate_references(**context)
