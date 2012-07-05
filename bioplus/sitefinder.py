@@ -281,7 +281,7 @@ Site (1) chr (2) start (3) end
     peaks_info.close()
     peaks_bed.close()
     message = "There were {!s} of {!s} peaks with no identifiable \
-sites in {!s} using a cutoff of 0".format(nosites, peaknumber, fasta_file)
+sites in {!s} using a cutoff of 0 bits".format(nosites, peaknumber, fasta_file)
     stdout_buffer = message
     # get the motif
     motif_str = ''
