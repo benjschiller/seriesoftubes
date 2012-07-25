@@ -12,6 +12,7 @@ class BAMFilenameParser(scripter.FilenameParser):
         super(BAMFilenameParser, self).__init__(filename, *args, **kwargs)
         
         sample = self.protoname
+        control_files = [v[1] for v in controls.values()]
         # check controls
         if controls.has_key(sample):
             sample_name, control = controls[sample]
@@ -21,7 +22,14 @@ class BAMFilenameParser(scripter.FilenameParser):
             else:
                 self.control_file = os.path.join(self.input_dir,
                                                  control + '.bam')
-        elif sample in [v[1] for v in controls.values()]:
+        if controls.has_key(self.input_file):
+            sample_name, control = controls[self.input_file]
+            scripter.debug('%s has control %s', self.input_file, control)
+            if control is None:
+                self.control_file = None
+            else:
+                self.control_file = control
+        elif sample in control_files or self.input_file in control_files:
             scripter.debug('%s is a control, aborting', sample)
             raise scripter.InvalidFileException
         else:

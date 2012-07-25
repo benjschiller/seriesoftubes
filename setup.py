@@ -22,7 +22,7 @@ except ImportError:
     command_classes =  {}
 
 name = 'seriesoftubes'
-version = '0.9.4.2'
+version = '0.9.4.4'
 
 def main():
     if not float(sys.version[:3])>=2.7:
@@ -43,11 +43,11 @@ def main():
         cmdclass= command_classes,
         install_requires = ['cython>=0.12',
                             'distribute>0.6.16',
-                            'scripter>=3.3.0',
+                            'scripter>=3.4.1',
                             'biopython>=1.56',
                             'pysam>=0.4',
                             'twobitreader>=2.5',
-                            'MACS==2.0.10pre3'
+                            'MACS2>=2.0.10'
                             ],
         packages = ['bioplus', 'seriesoftubes', 'seriesoftubes.converters',
     	   		     'seriesoftubes.fnparsers', 'seriesoftubes.tubes'],
@@ -68,7 +68,6 @@ def main():
 			'Programming Language :: Python :: 2.7',
 			'Topic :: Scientific/Engineering :: Bio-Informatics'
 			],
-    	dependency_links = ['https://github.com/downloads/benjschiller/MACS/MACS2-v2.0.10-pre3.tar.gz#egg=MACS-2.0.10pre3'],
     )
 if __name__ == '__main__':
 	main()

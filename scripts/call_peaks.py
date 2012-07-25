@@ -2,6 +2,8 @@
 '''
 calls peaks using MACS v2
 use --config to specify file with matched sample/controls
+
+Any additional --flags will be passed to MACS v2 (macs2 callpeak --flag)
 '''
 from ConfigParser import ConfigParser
 import sys
@@ -14,11 +16,12 @@ import pysam
 from scripter import Environment, path_to_executable, get_logger, Usage, \
                      exit_on_Usage
 from seriesoftubes.fnparsers import BAMFilenameParser
+from seriesoftubes.tubes.polledpipe import PolledPipe
 from bioplus.genometools import guess_bam_genome, genome, NoMatchFoundError, TemporaryGenomeFile
 from pkg_resources import get_distribution, VersionConflict
 __version__ = get_distribution('seriesoftubes').version
 VERSION = __version__
-MACS_VERSION = get_distribution('MACS==2.0.10pre3').version
+MACS_VERSION = get_distribution('MACS2>=2.0.10').version
 
 def main():
     e = Environment(doc=__doc__, version=VERSION)
@@ -33,6 +36,8 @@ def main():
                         help='do not call subpeaks with --call-summits')
     parser.add_argument('-q', '--q-value', dest='qvalue', default='0.01',
                         help='FDR/q-value cutoff (default is 0.01)')
+    parser.add_argument('--passthru-args', nargs='*',
+                        help='A list of arguments to be passed through to MACS2')
     parser.set_defaults(**{'target': 'peaks'})
     e.set_filename_parser(BAMFilenameParser)
     e.set_config_reader(read_setup_file)
@@ -44,7 +49,6 @@ def write_setup_file(controls=None, target_dir=curdir, *args, **kwargs):
     setup_file = open(join(target_dir, 'setup.txt'), 'w')
     setup_file.write('#%s\n' % ' '.join(sys.argv))
     if controls is None: return
-    print controls
     for sample, value in controls.items():
         name, control = value
         if control == None: control = 'None'
@@ -59,6 +63,7 @@ def read_setup_file(setup_file):
         raise IOError(EACCES, strerror(EACCES), setup_file)
     config_parser = ConfigParser()
     config_parser.readfp(open(setup_file, 'rU'))
+    files = []
     controls = {} # {sample: (name, control)}
     for section in config_parser.sections():
         name = section
@@ -69,7 +74,9 @@ def read_setup_file(setup_file):
         else:
             control = None
         controls[sample] = (name, control)
-    return {'controls': controls}
+        files.append(sample)
+        files.append(control)
+    return {'controls': controls, 'files': files}
             
 def decide_format(input_file, control_file, logger=None): 
     # See if we have paired-end files
@@ -95,7 +102,7 @@ def decide_format(input_file, control_file, logger=None):
 
 
 def run_macs(f, subpeaks=True, path_to_macs=None, logging_level=10,
-             user_gsize=None, qvalue=0.01,
+             user_gsize=None, qvalue=0.01, passthru_args=None,
              **kwargs):
     """Run MACS on a BAM file
     """
@@ -125,7 +132,8 @@ def run_macs(f, subpeaks=True, path_to_macs=None, logging_level=10,
     
     fmt = decide_format(input_file, control_file, logger)
     name = f.sample_name.replace(' ', '_')
-    macs_options = ['-f', fmt, # correct file format BAM or BAMPE
+    macs_options = ['--trackline',
+                    '-f', fmt, # correct file format BAM or BAMPE
                     '-B', #bedgraph
                     '-g', genome_size,
                     '-q', qvalue,
@@ -134,16 +142,20 @@ def run_macs(f, subpeaks=True, path_to_macs=None, logging_level=10,
     if control_file is not None:
         macs_options.extend(['-c', join(getcwd(), control_file)])
     if subpeaks: macs_options.append('--call-summits')
+    if passthru_args is not None:
+        macs_options.extend(passthru_args)
 
     step = [path_to_macs, 'callpeak'] + macs_options
     if platform.system() is 'Windows': step.insert(sys.executable, 0)
     
+    macs_stdout = PolledPipe(logger=logger, level=logging.WARN)
+    macs_stderr = PolledPipe(logger=logger, level=logging.ERROR)
     logger.debug('Launching %s', ' '.join(step))
-    job = Popen(step, stdout=PIPE, stderr=STDOUT, cwd=f.output_dir)
+    job = Popen(step, stdout=macs_stdout.w, stderr=macs_stderr.w, cwd=f.output_dir)
 
-    stdout_buffer = '%s\n\n%s\n' % (' '.join(step), job.communicate()[0])
-    logger.debug(stdout_buffer)
+    pollables = [macs_stdout, macs_stderr]
+    wait_for_job(job, pollables, logger)
     
-    return stdout_buffer
+    return '%s\n\n' % ' '.join(step)
 
 if __name__=="__main__": main()
