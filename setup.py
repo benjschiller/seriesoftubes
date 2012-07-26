@@ -35,7 +35,6 @@ def main():
     setup(
         name = name,
         version = version,
-        use_cython=True,
         description='An extended pipeline for Solexa ChIP-seq data',
         author='Benjamin Schiller',
         author_email='benjamin.schiller@ucsf.edu',

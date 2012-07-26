@@ -124,7 +124,9 @@ def run_macs(f, subpeaks=True, path_to_macs=None, logging_level=10,
     else:
         try: genome_build = guess_bam_genome(input_file)
         except NoMatchFoundError:
-            raise Usage('Could not determine genome size for %s' % bam_file)
+            raise Usage('\
+Could not determine genome / genome size for file %s' % input_file)
+            
         gname = ''.join([x for x in genome_build if x.isalpha()])
         if gname == 'hg': genome_size = 'hs'
         elif gname in ['mm', 'ce', 'dm']: genome_size = gname
