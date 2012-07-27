@@ -8,6 +8,7 @@ Any additional --flags will be passed to MACS v2 (macs2 callpeak --flag)
 from ConfigParser import ConfigParser
 import sys
 from errno import ENOENT, EACCES
+from logging import WARN, ERROR
 from os import access, extsep, strerror, R_OK, getcwd, getenv, listdir, makedirs, curdir
 from os.path import exists, join, splitext
 import platform
@@ -17,6 +18,7 @@ from scripter import Environment, path_to_executable, get_logger, Usage, \
                      exit_on_Usage
 from seriesoftubes.fnparsers import BAMFilenameParser
 from seriesoftubes.tubes.polledpipe import PolledPipe
+from seriesoftubes.tubes import wait_for_job
 from bioplus.genometools import guess_bam_genome, genome, NoMatchFoundError, TemporaryGenomeFile
 from pkg_resources import get_distribution, VersionConflict
 __version__ = get_distribution('seriesoftubes').version
@@ -150,8 +152,8 @@ Could not determine genome / genome size for file %s' % input_file)
     step = [path_to_macs, 'callpeak'] + macs_options
     if platform.system() is 'Windows': step.insert(sys.executable, 0)
     
-    macs_stdout = PolledPipe(logger=logger, level=logging.WARN)
-    macs_stderr = PolledPipe(logger=logger, level=logging.ERROR)
+    macs_stdout = PolledPipe(logger=logger, level=WARN)
+    macs_stderr = PolledPipe(logger=logger, level=ERROR)
     logger.debug('Launching %s', ' '.join(step))
     job = Popen(step, stdout=macs_stdout.w, stderr=macs_stderr.w, cwd=f.output_dir)
 
