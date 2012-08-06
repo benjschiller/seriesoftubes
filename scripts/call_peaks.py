@@ -39,7 +39,7 @@ def main():
     parser.add_argument('-q', '--q-value', dest='qvalue', default='0.01',
                         help='FDR/q-value cutoff (default is 0.01)')
     parser.add_argument('--passthru-args', nargs='*',
-                        help='A list of arguments to be passed through to MACS2')
+                        help='A list of arguments to be passed through to MACS2. Substitute + for - (e.g., --passthru-args +m 4 50')
     parser.set_defaults(**{'target': 'peaks'})
     e.set_filename_parser(BAMFilenameParser)
     e.set_config_reader(read_setup_file)
@@ -136,6 +136,10 @@ Could not determine genome / genome size for file %s' % input_file)
     
     fmt = decide_format(input_file, control_file, logger)
     name = f.sample_name.replace(' ', '_')
+    if passthru_args is not None:
+        for i in range(len(passthru_args)):
+            passthru_args[i] = passthru_args[i].replace('+', '-')
+        logger.debug('Passing thru arguments %s', ' '.join(passthru_args))
     macs_options = ['--trackline',
                     '-f', fmt, # correct file format BAM or BAMPE
                     '-B', #bedgraph

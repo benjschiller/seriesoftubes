@@ -13,21 +13,24 @@ class BowtieFilenameParser(scripter.FilenameParser):
 #        self.split_file = False
         self.format = format
         self.open_func = open_func
+        self.second_file = None
         if format == 'SAM' or format == 'BAM':
             self.use_pysam = True
             # try to open the file so we're sure it works
             f = pysam.Samfile(filename)
-            del f
+            aread = f.next()
+            self.paired_end = aread.is_paired
+            del f, aread
+            self.fastq_source = 'Unknown'
         elif format == 'FASTQ':
             self.use_pysam = False
+            self.check_paired_end()
+            if len(self.protoname.split('.')) > 6:
+                self.fastq_source = self.protoname.split('.')[6]
+            else:
+                self.fastq_source = 'Unknown'
         else:
             raise RuntimeError('Dubious file format')
-        self.second_file = None
-        self.check_paired_end()
-        if len(self.protoname.split('.')) > 6:
-            self.fastq_source = self.protoname.split('.')[6]
-        else:
-            self.fastq_source = 'Unknown'
     
     def check_paired_end(self):
         # check if this is a paired-end file
@@ -64,9 +67,13 @@ class BowtieFilenameParser(scripter.FilenameParser):
             scripter.debug('This file contains single-end reads.')
             self.paired_end = False
 
-    def tmp_filename(self, ref, match_type):
-        return os.path.join(self.output_dir, ref, match_type,
-                                       self.with_extension('tmp'))
+    def tmp_filename(self, ref, match_type=None):
+        if match_type is None:
+            return os.path.join(self.output_dir, ref,
+                                self.with_extension('tmp'))
+        else:
+            return os.path.join(self.output_dir, ref, match_type,
+                                self.with_extension('tmp'))
 
 def get_new_pair_info(illumina_name):
     """

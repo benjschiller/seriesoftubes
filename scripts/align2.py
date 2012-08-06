@@ -1,16 +1,14 @@
 #!/usr/bin/env python
 """
-Important Notice:
---references has been removed, please use --reference (multiple uses are ok)
-
 align FASTQ, SAM, or BAM file (gzip and bzip2 supported)
-with bowtie, produces BAM files (sorted and indexed)
-output will be in ./align
-In align, there will be a folder for each reference genome
-    e.g. align/ref1 , align/ref2, align/ref1, align/ref2
-In reference folder, there will be a folder for unique or random alignments
-    (unique means only maps to one spot, random is maq-like behavior)
-    e.g. align/ref1/random, align/ref1/unique, etc.
+with bowtie2, produces BAM files (sorted and indexed)
+output will be in ./align2
+In align2, there will be a folder for each reference genome
+    e.g. align2/ref1 , align2/ref2, align2/ref1, align2/ref2
+In reference folder, there will be a folder for uniquely mapped alignments
+     and alignments including random sampling where necessary
+    (folder names are unique, random, respectively)
+    e.g. align2/ref1/random, align2/ref1/unique, etc.
 """
 import pysam
 import logging
@@ -28,6 +26,8 @@ from scripter import assert_path, path_to_executable, Usage, \
 from seriesoftubes.tubes.polledpipe import PolledPipe
 from seriesoftubes.tubes import wait_for_job
 from seriesoftubes.fnparsers import BowtieFilenameParser
+from seriesoftubes.converters.bamtofastq import UnpairedBAMToFastqConverter
+from seriesoftubes.converters.bamtofastqpair import PairedBAMToFastqConverter
     
 from pkg_resources import get_distribution
 __version__ = get_distribution('seriesoftubes').version
@@ -36,13 +36,13 @@ VERSION = __version__
 def main():
     e = Environment(version=VERSION, doc=__doc__)
     e.set_filename_parser(BowtieFilenameParser)
-    # let bowtie do the multiprocessing
+    # let bowtie2 do the multiprocessing
     e.override_num_cpus(1)
     parser = e.argument_parser
-    parser.add_argument('--path-to-bowtie', nargs='?',
-                        default=path_to_executable('bowtie', '/usr/local/bowtie-*',
-                                                   environ='SOT_PATH_TO_BOWTIE'),
-                        help='The path to the bowtie executable')
+    parser.add_argument('--path-to-bowtie2', nargs='?',
+                        default=path_to_executable('bowtie2', '/usr/local/bowtie2-*',
+                                                   environ='SOT_PATH_TO_BOWTIE2'),
+                        help='The path to the bowtie2 executable')
     parser.add_argument('--path-to-samtools', nargs='?',
                         default=path_to_executable('samtools', '/usr/local/samtools*',
                                                    environ='SOT_PATH_TO_SAMTOOLS'),
@@ -50,7 +50,7 @@ def main():
     # fix aliases, should be --ref too
     parser.add_argument('--reference', dest='references', action='append',
                         help=dedent('''\
-    Reference genome to align against (either a bowtie index name or file, or a
+    Reference genome to align against (either a bowtie2 index name or file, or a
     fasta file). This flag may be called multiple times (which will cause each 
     reference to be aligned to separately). If no references are specified,
     we'll look the for environment variable SOT_DEFAULT_REFERENCES, which 
@@ -58,26 +58,11 @@ def main():
                         )
     parser.add_argument('--no-unique', dest='unique', action='store_false',
                         help='do not produce unique/ alignment folder') 
-    parser.add_argument('--no-random', dest='random', action='store_false',
-                        help='do not produce random/ alignment folder') 
     parser.add_argument('--ignore-quality', dest='use_quality',
                         action='store_false',
                         help=dedent('''\
-    Use -v mode with bowtie, allows only n mismatches total. Also applies to
+    Ignore quality scores if available. Also applies to
     counter-references if any are called'''))
-    parser.add_argument('--mismatches', default='2',
-                        help=dedent('''\
-    allow n mismatches, in the seed (default) or total if --ignore-quality (-v mode)'''))
-    parser.add_argument('--quals-type', default='solex1.3',
-                        choices=['solexa', 'solexa1.3', 'phred64', 'phred33',
-                                 'integer'],
-                        help='Valid options are integer, solexa1.3, solexa, phred33, or phred64 (see bowtie for more info)')
-    parser.add_argument('--max-quality', default='70',
-                        help=dedent('''\
-    specify maximum quality scores of all mismatched positions (default is 70),
-    ignored in --ignore-quality (-v) mode'''))
-    parser.add_argument('--seed-length', dest='seed_len', default='28',
-                        help='use seed length of m (default is 28)')
     cparser = parser.add_argument_group('counter-alignments',
                                         description=dedent('''\
     specify counter-reference genome(s)/sequence(s) to use for filtering out
@@ -85,7 +70,7 @@ def main():
     cparser.add_argument('--counter-reference', dest='counter_references',
                          action='append',
                         help=dedent('''\
-    Optional counter-reference genome/sequences to align against (either a bowtie
+    Optional counter-reference genome/sequences to align against (either a bowtie2
     index name or file, or a fasta file). This flag may be called multiple times.
     All counter-references will be concatenated into one index, and reads will
     be aligned in --no-unique (-M 1) mode. Any reads which align will be saved
@@ -94,23 +79,15 @@ def main():
     look the for environment variable SOT_DEFAULT_COUTNER_REFERENCES,
     which should be given as a list, e.g. "foo foo2 foo3"'''),
                         )
-    cparser.add_argument('--counter-mismatches', default=None,
-                        help=dedent('''\
-    allow n mismatches to counter-reference(s), in the seed (default) or total
-    if --ignore-quality (-v mode). Default: same as references'''))
-    cparser.add_argument('--counter-max-quality', default='70',
-                        help=dedent('''\
-    specify maximum quality scores of all mismatched positions when aligning to
-    counter-reference(s) (default is 70), ignored in --ignore-quality (-v) mode'''))
     context = e.get_context()
     new_references = validate_references(**context)
     new_counter_references = cat_counter_references(**context)
     e.update_context({'references': new_references,
                       'counter_references': new_counter_references})
-    e.do_action(align)
+    e.do_action(align2)
 
-def fastq_to_bowtie(fasta_file, target_dir=curdir, path_to_bowtie='bowtie'):
-    """given a filename, makes a bowtie index
+def fastq_to_bowtie(fasta_file, target_dir=curdir, path_to_bowtie2='bowtie2'):
+    """given a filename, makes a bowtie2 index
     if that file is a FASTA file
     """
     if exists(fasta_file):
@@ -118,7 +95,7 @@ def fastq_to_bowtie(fasta_file, target_dir=curdir, path_to_bowtie='bowtie'):
         for line in f:
             if line.startswith('#'): continue
             elif line.startswith('>'):
-                args = [path_to_bowtie + '-build', fasta_file,
+                args = [path_to_bowtie2 + '-build', fasta_file,
                         join(target_dir, fasta_file)]
                 debug(' '.join(args))
                 P = Popen(args, stdout=open(devnull, 'w'), stderr=PIPE)
@@ -127,33 +104,33 @@ def fastq_to_bowtie(fasta_file, target_dir=curdir, path_to_bowtie='bowtie'):
                 else: return join(getcwd(), target_dir, fasta_file)
     return None
 
-def find_bowtie_index(r, path_to_bowtie='bowtie'):
-    """check for bowtie index as given. return True if found, else return False"""
-    args = [path_to_bowtie + '-inspect', '-v', '-s', r]
+def find_bowtie2_index(r, path_to_bowtie2='bowtie2'):
+    """check for bowtie2 index as given. return True if found, else return False"""
+    args = [path_to_bowtie2 + '-inspect', '-v', '-s', r]
     debug(' '.join(args))
     P = Popen(args, stdout=open(devnull, 'w'), stderr=PIPE, cwd=mkdtemp())
     stderr = P.communicate()[1].splitlines()
     if not stderr[0].startswith('Could not locate'):
         for line in stderr:
             if line.startswith('Opening'):
-                index_ebwt1 = line[(1+line.find('"')):line.rfind('"')]
-                index_basename = index_ebwt1[0:index_ebwt1.find('.1.ebwt')]
+                index_bt2 = line[(1 + line.find('"')):line.rfind('"')]
+                index_basename = index_bt2[0:index_bt2.find('.1.bt2')]
                 return index_basename
     rprime = join(getcwd(), r)
-    args = [path_to_bowtie + '-inspect', '-v', '-s', rprime]
+    args = [path_to_bowtie2 + '-inspect', '-v', '-s', rprime]
     debug(' '.join(args))
     P = Popen(args, stdout=open(devnull, 'w'), stderr=PIPE, cwd=mkdtemp())
     stderr = P.communicate()[1].splitlines()
     if not stderr[0].startswith('Could not locate'):
         for line in stderr:
             if line.startswith('Opening'):
-                index_ebwt1 = line[(1+line.find('"')):line.rfind('"')]
-                index_basename = index_ebwt1[0:index_ebwt1.find('.1.ebwt')]
+                index_bt2 = line[(1 + line.find('"')):line.rfind('"')]
+                index_basename = index_bt2[0:index_bt2.find('.1.bt2')]
                 return index_basename
     return None
 
 def cat_counter_references(counter_references=None, target_dir=curdir,
-                            path_to_bowtie='bowtie',
+                            path_to_bowtie2='bowtie2',
                             logger=None, **kwargs):
     if counter_references is None: return
     try: makedirs(target_dir, mode=0755)
@@ -161,14 +138,14 @@ def cat_counter_references(counter_references=None, target_dir=curdir,
     debug('Validating counter-references and building counter-reference index')
     valid_references = validate_references(references=counter_references,
                                            target_dir=target_dir,
-                                           path_to_bowtie=path_to_bowtie,
+                                           path_to_bowtie2=path_to_bowtie2,
                                            logger=logger,
                                            environ_key='SOT_DEFAULT_COUNTER_REFERENCES')
     crefs_fa = open(join(target_dir, 'counter_references.fa'), 'w')
     for ref in counter_references:
-        Popen([path_to_bowtie + '-inspect', ref], stdout=crefs_fa).wait()
+        Popen([path_to_bowtie2 + '-inspect', ref], stdout=crefs_fa).wait()
     crefs_index = join(target_dir, counter_references)
-    args = [path_to_bowtie + '-build', crefs_fa, crefs_index]
+    args = [path_to_bowtie2 + '-build', crefs_fa, crefs_index]
     P = Popen(args, stderr=PIPE)
     stderr = P.communicate()[1]
     if stderr.startswith('Error'):
@@ -176,7 +153,7 @@ def cat_counter_references(counter_references=None, target_dir=curdir,
         critical('No counter-references will be used.')
     return crefs_index
 
-def validate_references(references=None, path_to_bowtie='bowtie',
+def validate_references(references=None, path_to_bowtie2='bowtie2',
                         logger=None, environ_key='SOT_DEFAULT_REFERENCES',
                         target_dir=curdir,
                         **kwargs):
@@ -191,84 +168,88 @@ def validate_references(references=None, path_to_bowtie='bowtie',
             return []
     
     for r in references:
-        bowtie_index = find_bowtie_index(r, path_to_bowtie=path_to_bowtie)
-        if bowtie_index is None:
+        bowtie2_index = find_bowtie2_index(r, path_to_bowtie2=path_to_bowtie2)
+        if bowtie2_index is None:
             if exists(r):
-                debug('Attempting to build bowtie index from %s' % r)
+                debug('Attempting to build bowtie2 index from %s' % r)
                 new_index = fastq_to_bowtie(r, target_dir=target_dir,
-                                            path_to_bowtie=path_to_bowtie)
+                                            path_to_bowtie2=path_to_bowtie2)
                 if new_index is not None:
                     new_references.append(new_index)
                     continue
                 else:
-                    critical('Failed to build bowtie index.')
-            critical('bowtie could not find the index for %s', r)
+                    critical('Failed to build bowtie2 index.')
+            critical('bowtie2 could not find the index for %s', r)
             critical('we will not align to %s', r)
         else:
-            new_references.append(bowtie_index)
+            new_references.append(bowtie2_index)
     return new_references
 
+def convert_to_fastq(fp_obj, logger=None):
+    """Convert a SAM or BAM file to FASTQ file(s) for alignment
+    """
+    input_file = fp_obj.input_file
+    output_dir = fp_obj.output_dir
+    fastq_dir = join(output_dir, 'fastq_input')
+    protoname = fp_obj.protoname
+    if fp_obj.paired_end:
+        fastq_filenames = (join(fastq_dir, '%s.1.txt.gz' % protoname),
+                           join(fastq_dir, '%s.2.txt.gz' % protoname))
+        logger.info('Converting file %s to FASTQ files %s, %s',
+                    input_file, fastq_filenames[0], fastq_filenames[1])
+        in_args = [sys.executable, '-m', 'seriesoftubes.converters.bamtofastq',
+                   filename1]
+    else:
+        fastq_filename = join(fastq_dir, '%s.txt.gz' % protoname)
+        logger.info('Converting file %s to FASTQ file %s',
+                    input_file, fastq_filename)
+        in_args = [sys.executable, '-m', 'seriesoftubes.converters.bamtofastq',
+                   filename1]
+    
 @exit_on_Usage
-def align(fp_obj, references=[], counter_references=None,
-          random=True, unique=True, max_quality='70',
-          quals_type='solexa1.3',  mismatches='2', seed_len='28',
-          counter_mismatches=None,
+def align2(fp_obj, references=[], counter_references=None,
+          unique=True, seed_len='28',
           use_quality=True, logging_level=10, num_cpus=1, **kwargs):
-    if not unique and not random: raise Usage('Nothing to do')
-    common_flags = ['-y', '-a', '--time', '--best', '--chunkmbs', '1024',
-                    '--strata', '--sam']
-    common_flags.extend(['-p', str(num_cpus)])
+    common_flags = ['--time', '-p', str(num_cpus), '-L', seed_len]
+    
     logger = get_logger(logging_level)
     uniqueness = {}
-    if unique: uniqueness.update({'unique': ['-m','1']})
-    if random: uniqueness.update({'random': ['-M','1']})
     stdout_buffer = []
-    common_flags.extend(['-l', seed_len])
+    
+    if fp_obj.format == 'BAM' or fp_obj.format == 'SAM':
+        convert_to_fastq(fp_obj, logger=logger) 
     
     new_sources = []
     if counter_references is not None:
+        raise NotImplementedError
         #counter align first
         flags = [item for item in common_flags]
-        flags.extend(uniqueness['random'])
-        if counter_mismatches is None: counter_mismatches = mismatches
-        if use_quality:
-            flags.extend(['-e', max_quality])
-            flags.extend(['-n', counter_mismatches])
-        else:
-            flags.extend(['-v', counter_mismatches])
-            
-        if fp_obj.paired_end: flags.extend(['-X','600'])
+        if fp_obj.paired_end: flags.extend(['-X', '600'])
         
         # after alignment
         fp_obj.input_file = new_filenames[0]
         fp_obj.second_file = new_filenames[1]
         fp_obj.use_pysam = True
+        flags.extend(uniqueness['random'])
         fp_obj.format = 'BAM'
     
-    for match_type, match_flag in uniqueness.items():
-        flags = [item for item in common_flags]
-        flags.extend(match_flag)
-        
-        source = fp_obj.fastq_source
-        # In case we're from that bad day...
-##        if source=='081124_HWI-EAS355_0001_Meghan' and match_type=='unique':
-##            flags.extend(['-v', '3'])
-#        elif use_quality:
-        if use_quality:
-            flags.extend(['-e', max_quality])
-            flags.extend(['-n', mismatches])
-        else:
-            flags.extend(['-v', mismatches])
+    flags = [item for item in common_flags]
+    
+    source = fp_obj.fastq_source
 
-        if fp_obj.paired_end: flags.extend(['-X','600'])
-        
-        for ref in references:
-            s = align_once(fp_obj, flags, ref, match_type, logger=logger, **kwargs)
-            stdout_buffer.append(s)
+    if fp_obj.paired_end: flags.extend(['-X', '600'])
+    
+    for ref in references:
+        s = align_once(fp_obj, flags, ref, logger=logger, **kwargs)
+        stdout_buffer.append(s)
     return '\n'.join([s for s in stdout_buffer if s is not None])
 
 def counteralign_once(**kwargs):
     """Produce counter-alignements"""
+    if use_quality:
+        if fp_obj.use_pysam: flags.append('--phred33')
+        else: flags.append('--phred64')
+        
     refname = os.path.basename(ref)
     output_dir, output_file = os.path.split(fp_obj.tmp_filename(refname))
     fp_obj.check_output_dir(output_dir)
@@ -276,63 +257,70 @@ def counteralign_once(**kwargs):
     second_file = fp_obj.second_file
     if second_file is not None: filename2 = os.path.abspath(second_file)
     else: filename2 = None
-    if use_quality:
-        if fp_obj.use_pysam: flags.append('--phred33-quals')
-        else: flags.append(''.join(['--', quals_type, '-quals']))
+    
+    format = fp_obj.format
+    logger.info('Automagically interpreting %s file(s)', format)
+    input_stderr = None
+    input_reader = None
     if fp_obj.paired_end:
-        file_args = [ref, '--12', '-']
-        logger.info('Automagically interpreting %s files', fp_obj.format)
+        if format == 'FASTQ':
+            file_args = ['-x', ref, '-1', filename1, '-2', filename2]  
+        elif format == 'BAM' or format == 'SAM':
+            input_stderr = PolledPipe(logger=logger, level=logging.ERROR)
+            input_reader = PairedBAMToFastqConverter(filename1, wd=output_dir,
+                                                     stderr=input_stderr.w,
+                                                     logger=logger)
+            fifos = input_reader.fifos
+            file_args = ['-x', ref, '-1', fifos[1], '-2', fifos[2]]
+        else:
+            logger.critical("Couldn't figure out what to do with file %s of format %s",
+                            fp_obj.input_file, fp_obj.format)
     else:
-        logger.info('Automagically interpreting %s file', fp_obj.format)
-        file_args = [ref, '-']
-    bowtie_args = [path_to_bowtie] + flags + file_args
+        if format == 'FASTQ':
+            file_args = ['-x', ref, '-U', filename1]
+        elif format == 'BAM' or format == 'SAM':
+            input_stderr = PolledPipe(logger=logger, level=logging.ERROR)
+            input_reader = UnpairedBAMToFastqConverter(filename1, wd=output_dir,
+                                                       stderr=input_stderr.w,
+                                                       logger=logger)
+            fifo = input_reader.fifo
+            file_args = ['-x', ref, '-U', fifo]
+        else:
+            logger.critical("Couldn't figure out what to do with file %s of format %s",
+                            fp_obj.input_file, fp_obj.format)
+    bowtie2_args = [path_to_bowtie2] + flags + file_args
     
     # finish parsing input here
-    input_stderr = PolledPipe(logger=logger, level=logging.ERROR)
-    bowtie_stderr = PolledPipe(logger=logger, level=logging.ERROR)
-    if fp_obj.use_pysam:
-        if fp_obj.paired_end:
-            in_args = [sys.executable, '-m', 'seriesoftubes.converters.bamtotab',
-                       filename1]
-        else:
-            in_args = [sys.executable, '-m', 'seriesoftubes.converters.bamtofastq',
-                       filename1]
-    elif fp_obj.paired_end and fp_obj.format =='FASTQ':
-        in_args = [sys.executable, '-m', 'seriesoftubes.converters.fastqtotab',
-                   filename1, filename2]
-    elif fp_obj.format == 'FASTQ':
-        in_args = [sys.executable, '-m', 'seriesoftubes.converters.cat',
-                   filename1]
-    else:
-        logger.critical("Couldn't figure out what to do with file %s of format %s",
-                        fp_obj.input_file, fp_obj.format)
+    bowtie2_stderr = PolledPipe(logger=logger, level=logging.ERROR)
     logger.info(' '.join(in_args))
-    input_reader = Popen(in_args, stdout=PIPE, stderr=input_stderr.w,
-                         bufsize=-1)
-    logger.info('Launching botwie (output will be piped to samtools)')
-    logger.info(' '.join(bowtie_args))
-    bowtie_aligner = Popen(bowtie_args, stdin=input_reader.stdout,
-                           stdout=PIPE, stderr=bowtie_stderr.w,
-                           bufsize=-1)
+    logger.info('Launching bowtie2 (output will be piped to samtools)')
+    logger.info(' '.join(bowtie2_args))
+    bowtie2_aligner = Popen(bowtie2_args, stdin=None,
+                           stdout=PIPE, stderr=bowtie2_stderr.w,
+                           bufsize= -1)
+    pollables = [bowtie2_stderr]
+    if input_stderr is not None:
+        pollables.append(input_stderr)
     logger.info('Only unaligned reads will be saved.')
+    
     samtools_args = [path_to_samtools, 'view', '-b', '-S', '-o',
-                     '-f', '0x4',# ONLY SAVE UNALIGNED READS
+                     '-f', '0x4', # ONLY SAVE UNALIGNED READS
                      join(output_dir, output_file), '-']
-    logger.info('Launching samtools to encode bowtie output as BAM')
+    logger.info('Launching samtools to encode bowtie2 output as BAM')
     logger.info(' '.join(samtools_args))
     samtools_stdout = PolledPipe(logger=logger, level=logging.WARN)
     samtools_stderr = PolledPipe(logger=logger, level=logging.ERROR)
-    samtools_viewer = Popen(samtools_args, stdin=bowtie_aligner.stdout,
+    samtools_viewer = Popen(samtools_args, stdin=bowtie2_aligner.stdout,
                             stdout=samtools_stdout.w,
-                            stderr=samtools_stderr.w, bufsize=-1)
+                            stderr=samtools_stderr.w, bufsize= -1)
     
-    logger.debug('Waiting for bowtie to finish')
-    pollables = [input_stderr, bowtie_stderr, samtools_stdout, samtools_stderr]
-    wait_for_job(bowtie_aligner, pollables, logger)
+    logger.debug('Waiting for bowtie2 to finish')
+    pollables.extend([samtools_stdout, samtools_stderr])
+    wait_for_job(bowtie2_aligner, pollables, logger)
     
-    if not bowtie_aligner.returncode == 0:
-        logger.critical("bowtie did not run properly [%d]",
-                        bowtie_aligner.returncode)
+    if not bowtie2_aligner.returncode == 0:
+        logger.critical("bowtie2 did not run properly [%d]",
+                        bowtie2_aligner.returncode)
         samtools_viewer.terminate()
         samtools_viewer.poll()
         logger.critical("samtools terminated")
@@ -350,74 +338,87 @@ def counteralign_once(**kwargs):
     
     return (join(output_dir, output_file), None)
 
-def align_once(fp_obj, flags, ref, match_type, use_quality=False,
-               quals_type='solexa1.3',
-               path_to_bowtie= None, path_to_samtools=None, logger=None,
+def align_once(fp_obj, flags, ref, use_quality=False,
+               path_to_bowtie2=None, path_to_samtools=None, logger=None,
                **kwargs):
+    if use_quality:
+        if fp_obj.use_pysam: flags.append('--phred33')
+        else: flags.append('--phred64')
+        
     refname = os.path.basename(ref)
-    path_to_unsorted = fp_obj.tmp_filename(refname, match_type)
+    path_to_unsorted = fp_obj.tmp_filename(refname)
     output_dir = os.path.split(path_to_unsorted)[0]
     fp_obj.check_output_dir(output_dir)
     filename1 = os.path.abspath(fp_obj.input_file)
     second_file = fp_obj.second_file
     if second_file is not None: filename2 = os.path.abspath(second_file)
     else: filename2 = None
-    if use_quality:
-        if fp_obj.use_pysam: flags.append('--phred33-quals')
-        else: flags.append(''.join(['--', quals_type, '-quals']))
+    
+    format = fp_obj.format
+    logger.info('Automagically interpreting %s file(s)', format)
+    input_stderr = None
+    input_reader = None
     if fp_obj.paired_end:
-        file_args = [ref, '--12', '-']
-        logger.info('Automagically interpreting %s files', fp_obj.format)
+        if format == 'FASTQ':
+            file_args = ['-x', ref, '-1', filename1, '-2', filename2]  
+        elif format == 'BAM' or format == 'SAM':
+            input_stderr = PolledPipe(logger=logger, level=logging.ERROR)
+            input_reader = PairedBAMToFastqConverter(filename1, wd=output_dir,
+                                                     stderr=input_stderr.w,
+                                                     logger=logger)
+            fifos = input_reader.fifos
+            file_args = ['-x', ref, '-1', fifos[0], '-2', fifos[1]]
+        else:
+            logger.critical("Couldn't figure out what to do with file %s of format %s",
+                            fp_obj.input_file, fp_obj.format)
     else:
-        logger.info('Automagically interpreting %s file', fp_obj.format)
-        file_args = [ref, '-']
-    bowtie_args = [path_to_bowtie] + flags + file_args
+        if format == 'FASTQ':
+            file_args = ['-x', ref, '-U', filename1]
+        elif format == 'BAM' or format == 'SAM':
+            input_stderr = PolledPipe(logger=logger, level=logging.ERROR)
+            input_reader = UnpairedBAMToFastqConverter(filename1, wd=output_dir,
+                                                       stderr=input_stderr.w,
+                                                       logger=logger)
+            fifo = input_reader.fifo
+            file_args = ['-x', ref, '-U', fifo]
+        else:
+            logger.critical("Couldn't figure out what to do with file %s of format %s",
+                            fp_obj.input_file, fp_obj.format)
+    bowtie2_args = [path_to_bowtie2] + flags + file_args
     
     # finish parsing input here
-    input_stderr = PolledPipe(logger=logger, level=logging.ERROR)
-    bowtie_stderr = PolledPipe(logger=logger, level=logging.ERROR)
-    if fp_obj.use_pysam:
-        if fp_obj.paired_end:
-            in_args = [sys.executable, '-m', 'seriesoftubes.converters.bamtotab',
-                       filename1]
-        else:
-            in_args = [sys.executable, '-m', 'seriesoftubes.converters.bamtofastq',
-                       filename1]
-    elif fp_obj.paired_end and fp_obj.format =='FASTQ':
-        in_args = [sys.executable, '-m', 'seriesoftubes.converters.fastqtotab',
-                   filename1, filename2]
-    elif fp_obj.format == 'FASTQ':
-        in_args = [sys.executable, '-m', 'seriesoftubes.converters.cat',
-                   filename1]
-    else:
-        logger.critical("Couldn't figure out what to do with file %s of format %s",
-                        fp_obj.input_file, fp_obj.format)
-    logger.info(' '.join(in_args))
-    input_reader = Popen(in_args, stdout=PIPE, stderr=input_stderr.w,
-                         bufsize=-1)
-    logger.info('Launching botwie (output will be piped to samtools)')
-    logger.info(' '.join(bowtie_args))
-    bowtie_aligner = Popen(bowtie_args, stdin=input_reader.stdout,
-                           stdout=PIPE, stderr=bowtie_stderr.w,
+    bowtie2_stderr = PolledPipe(logger=logger, level=logging.ERROR)
+    logger.info('Launching bowtie2 (output will be piped to samtools)')
+    logger.info(' '.join(bowtie2_args))
+    import sys
+    bowtie2_aligner = Popen(bowtie2_args, stdin=None,
+#                           stdout=PIPE, stderr=bowtie2_stderr.w,
+                           stdout=sys.stderr, stderr=bowtie2_stderr.w,
                            bufsize=-1)
+    pollables = [bowtie2_stderr]
+    if input_stderr is not None:
+        pollables.append(input_stderr)
     
     samtools_args = [path_to_samtools, 'view', '-b', '-S', '-o',
                      path_to_unsorted, '-']
-    logger.info('Launching samtools to encode bowtie output as BAM')
+    logger.info('Launching samtools to encode bowtie2 output as BAM')
     logger.info(' '.join(samtools_args))
     samtools_stdout = PolledPipe(logger=logger, level=logging.WARN)
     samtools_stderr = PolledPipe(logger=logger, level=logging.ERROR)
-    samtools_viewer = Popen(samtools_args, stdin=bowtie_aligner.stdout,
+    samtools_viewer = Popen(samtools_args, stdin=bowtie2_aligner.stdout,
+#    samtools_viewer = Popen(samtools_args, stdin=PIPE,
                             stdout=samtools_stdout.w,
-                            stderr=samtools_stderr.w, bufsize=-1)
+                            stderr=samtools_stderr.w, bufsize= -1)
     
-    logger.debug('Waiting for bowtie to finish')
-    pollables = [input_stderr, bowtie_stderr, samtools_stdout, samtools_stderr]
-    wait_for_job(bowtie_aligner, pollables, logger)
+    if input_reader is not None:
+        input_reader.launch()
+    logger.debug('Waiting for bowtie2 to finish')
+    pollables.extend([samtools_stdout, samtools_stderr])
+    wait_for_job(bowtie2_aligner, pollables, logger)
     
-    if not bowtie_aligner.returncode == 0:
-        logger.critical("bowtie did not run properly [%d]",
-                        bowtie_aligner.returncode)
+    if not bowtie2_aligner.returncode == 0:
+        logger.critical("bowtie2 did not run properly [%d]",
+                        bowtie2_aligner.returncode)
         samtools_viewer.terminate()
         samtools_viewer.poll()
         logger.critical("samtools terminated")
@@ -469,4 +470,4 @@ def align_once(fp_obj, flags, ref, match_type, use_quality=False,
     assert_path(os.path.join(output_dir, bam_file + '.bam.bai'))
     return
 
-if __name__=="__main__": main()
+if __name__ == "__main__": main()

@@ -309,7 +309,7 @@ def counteralign_once(**kwargs):
     logger.info(' '.join(in_args))
     input_reader = Popen(in_args, stdout=PIPE, stderr=input_stderr.w,
                          bufsize=-1)
-    logger.info('Launching botwie (output will be piped to samtools)')
+    logger.info('Launching bowtie (output will be piped to samtools)')
     logger.info(' '.join(bowtie_args))
     bowtie_aligner = Popen(bowtie_args, stdin=input_reader.stdout,
                            stdout=PIPE, stderr=bowtie_stderr.w,
@@ -395,7 +395,7 @@ def align_once(fp_obj, flags, ref, match_type, use_quality=False,
     logger.info(' '.join(in_args))
     input_reader = Popen(in_args, stdout=PIPE, stderr=input_stderr.w,
                          bufsize=-1)
-    logger.info('Launching botwie (output will be piped to samtools)')
+    logger.info('Launching bowtie (output will be piped to samtools)')
     logger.info(' '.join(bowtie_args))
     bowtie_aligner = Popen(bowtie_args, stdin=input_reader.stdout,
                            stdout=PIPE, stderr=bowtie_stderr.w,
