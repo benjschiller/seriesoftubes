@@ -116,11 +116,11 @@ def main():
     if context['gzip']:
         if PATH_TO_GZIP is not None:
             open_func = gzip_class_factory(PATH_TO_GZIP)
-            fh1 = open_func(context['outfile1'][0], 'w')
-            fh2 = open_func(context['outfile2'][0], 'w')
+            fh1 = open_func(context['outfile1'], 'w')
+            fh2 = open_func(context['outfile2'], 'w')
         else:
-            fh1 = GzipFile(context['outfile1'][0], 'wb')
-            fh2 = GzipFile(context['outfile2'][0], 'wb')
+            fh1 = GzipFile(context['outfile1'], 'wb')
+            fh2 = GzipFile(context['outfile2'], 'wb')
         is_paired = False
         gzwrite = gzwriter(fh1, fh2)
         for aread in f:
@@ -142,8 +142,8 @@ def main():
         out2.close()
         f.close()
     else:
-        out1 = os.open(context['outfile1'][0], os.O_WRONLY|os.O_NONBLOCK)
-        out2 = os.open(context['outfile2'][0], os.O_WRONLY|os.O_NONBLOCK)
+        out1 = os.open(context['outfile1'], os.O_WRONLY|os.O_NONBLOCK)
+        out2 = os.open(context['outfile2'], os.O_WRONLY|os.O_NONBLOCK)
         is_paired = False
         write = pair_writer(out1, out2)
         for aread in f:
