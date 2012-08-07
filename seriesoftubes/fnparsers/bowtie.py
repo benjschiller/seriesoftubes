@@ -97,7 +97,7 @@ def get_new_pair_info(illumina_name):
         output_name = '_'.join(parts[0:-2]) + '_' + num + '.fastq'
         return (read[1], second_file, output_name)
     return None
-    
+
 def get_pair_info(illumina_name):
     """
     take a filename from GERALD output and figure out whether it's the first

@@ -82,7 +82,52 @@ def main():
     new_counter_references = cat_counter_references(**context)
     e.update_context({'references': new_references,
                       'counter_references': new_counter_references})
+    sequence = e.get_sequence(**context)
+    e._sequence = merge_pairs(sequence)
     e.do_action(align2)
+
+def merge_pairs(sequence):
+    """pair sequence files that differ only by 1/2 in one position
+    """
+    input_files = [fp_obj.input_file for fp_obj in sequence]
+    mates = []
+    for i in xrange(len(input_files)):
+        if i in mates: continue
+        these_mates = []
+        for j in xrange(i, len(input_files)):
+            identity = [(not x==y) for x,y in zip(input_files[i], input_files[j])]
+            if sum(identity) == 1:
+                these_mates.append(j)
+        if len(these_mates) == 0: continue
+        elif len(these_mates) == 1:
+            j = these_mates[0]
+        else:
+            # User input required
+            print "Ambiguous filename pairing"
+            print "Please select the correct mate pair for %s:" % input_files[i]
+            while True:
+                for j in these_mates:
+                    print "[%d] %s" % (j, input_files[j])
+                rawinput = raw_input("Enter your choice: ")
+                try: choice = int(rawinput.strip())
+                except ValueError: continue
+                if not choice in these_mates:
+                    print "%d is not a valid choice" % choice
+                else:
+                    j = choice
+                    break
+        identity = [(not x==y) for x,y in zip(input_files[i], input_files[j])]
+        index = identity.index(True)
+        if input_files[i][index] == '1' and input_files[j][index] == '2':
+            sequence[i].second_file = sequence[j].input_file
+            sequence[i].paired_end = True
+            mates.append(j)
+        elif input_files[j][index] == '1' and input_files[i][index] == '2':
+            sequence[j].second_file = sequence[i].input_file
+            sequence[j].paired_end = True
+            mates.append(i)
+                    
+    return [x for i, x in enumerate(sequence) if not i in mates]
 
 def fasta_to_bowtie2(fasta_file, target_dir=curdir, path_to_bowtie2='bowtie2'):
     """given a filename, makes a bowtie2 index
@@ -268,7 +313,7 @@ def align2(fp_obj, references=[], counter_references=None,
     return '\n'.join([s for s in stdout_buffer if s is not None])
 
 def make_paired_name(name1, name2):
-    identity = [x==y for x,y in name1,name2]
+    identity = [(not x==y) for x,y in zip(name1,name2)]
     if not sum(identity) == 1: raise ValueError('Not valid names')
     else:
         index = identity.index(True)
