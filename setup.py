@@ -22,7 +22,7 @@ except ImportError:
     command_classes =  {}
 
 name = 'seriesoftubes'
-version = '0.9.5.0pre1'
+version = '0.9.5.0'
 
 def main():
     if not float(sys.version[:3])>=2.7:
