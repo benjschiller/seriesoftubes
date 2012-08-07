@@ -26,8 +26,6 @@ from scripter import assert_path, path_to_executable, Usage, \
 from seriesoftubes.tubes.polledpipe import PolledPipe
 from seriesoftubes.tubes import wait_for_job
 from seriesoftubes.fnparsers import BowtieFilenameParser
-from seriesoftubes.converters.bamtofastq import UnpairedBAMToFastqConverter
-from seriesoftubes.converters.bamtofastqpair import PairedBAMToFastqConverter
     
 from pkg_resources import get_distribution
 __version__ = get_distribution('seriesoftubes').version
