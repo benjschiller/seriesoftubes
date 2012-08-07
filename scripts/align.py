@@ -238,6 +238,8 @@ def align(fp_obj, references=[], counter_references=None,
             flags.extend(['-v', counter_mismatches])
             
         if fp_obj.paired_end: flags.extend(['-X','600'])
+        new_filenames = counteralign_once(fp_obj, flags, counter_references,
+                              logger=logger, **kwargs)
         
         # after alignment
         fp_obj.input_file = new_filenames[0]
@@ -267,7 +269,7 @@ def align(fp_obj, references=[], counter_references=None,
             stdout_buffer.append(s)
     return '\n'.join([s for s in stdout_buffer if s is not None])
 
-def counteralign_once(**kwargs):
+def counteralign_once(fp_obj, flags, ref, **kwargs):
     """Produce counter-alignements"""
     refname = os.path.basename(ref)
     output_dir, output_file = os.path.split(fp_obj.tmp_filename(refname))
