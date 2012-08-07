@@ -114,17 +114,19 @@ def find_bowtie2_index(r, path_to_bowtie2='bowtie2'):
                 index_bt2 = line[(1 + line.find('"')):line.rfind('"')]
                 index_basename = index_bt2[0:index_bt2.find('.1.bt2')]
                 return index_basename
-    rprime = join(getcwd(), r)
-    args = [path_to_bowtie2 + '-inspect', '-v', '-s', rprime]
-    debug(' '.join(args))
-    P = Popen(args, stdout=open(devnull, 'w'), stderr=PIPE, cwd=mkdtemp())
-    stderr = P.communicate()[1].splitlines()
-    if not stderr[0].startswith('Could not locate'):
-        for line in stderr:
-            if line.startswith('Opening'):
-                index_bt2 = line[(1 + line.find('"')):line.rfind('"')]
-                index_basename = index_bt2[0:index_bt2.find('.1.bt2')]
-                return index_basename
+    for d in [getcwd(), os.path.split(path_to_bowtie2)[0],
+              join(os.path.split(path_to_bowtie2)[0], 'indexes')]:
+        rprime = join(d, r)
+        args = [path_to_bowtie2 + '-inspect', '-v', '-s', rprime]
+        debug(' '.join(args))
+        P = Popen(args, stdout=open(devnull, 'w'), stderr=PIPE, cwd=mkdtemp())
+        stderr = P.communicate()[1].splitlines()
+        if not stderr[0].startswith('Could not locate'):
+            for line in stderr:
+                if line.startswith('Opening'):
+                    index_bt2 = line[(1 + line.find('"')):line.rfind('"')]
+                    index_basename = index_bt2[0:index_bt2.find('.1.bt2')]
+                    return index_basename
     return None
 
 def cat_counter_references(counter_references=None, target_dir=curdir,
@@ -189,6 +191,7 @@ def convert_to_fastq(fp_obj, logger=None):
     input_file = fp_obj.input_file
     output_dir = fp_obj.output_dir
     fastq_dir = join(output_dir, 'fastq_input')
+    fp_obj.check_output_dir(fastq_dir)
     protoname = fp_obj.protoname
     if fp_obj.paired_end:
         fastq_filenames = (join(fastq_dir, '%s.1.txt.gz' % protoname),
@@ -196,7 +199,7 @@ def convert_to_fastq(fp_obj, logger=None):
         logger.info('Converting file %s to FASTQ files %s, %s',
                     input_file, fastq_filenames[0], fastq_filenames[1])
         in_args = [sys.executable, '-m', 'seriesoftubes.converters.bamtofastq2',
-                   filename1, fastq_filenames[0], fastq_filenames[1]]
+                   '--gzip', input_file, fastq_filenames[0], fastq_filenames[1]]
     else:
         fastq_filename = join(fastq_dir, '%s.txt.gz' % protoname)
         logger.info('Converting file %s to FASTQ file %s',
@@ -205,10 +208,10 @@ def convert_to_fastq(fp_obj, logger=None):
                    input_file, fastq_filename]
     logger.debug('Launching %s', ' '.join(in_args))
     polledpipe = PolledPipe(logger=logger, level=logging.ERROR)
-    job = Popen(in_arg, stdout=polledpipe.w, stderr=STDOUT)
+    job = Popen(in_args, stdout=polledpipe.w, stderr=STDOUT)
     wait_for_job(job, [polledpipe], logger)
     if fp_obj.paired_end:
-        logger.debug('Settings input_file to %s', fastq_filename[0])
+        logger.debug('Settings input_file to %s', fastq_filenames[0])
         fp_obj.input_file = fastq_filenames[0]
         logger.debug('Settings second_file to %s', fastq_filenames[1])
         fp_obj.second_file = fastq_filenames[1]
@@ -220,7 +223,10 @@ def convert_to_fastq(fp_obj, logger=None):
     logger.debug('Setting format to FASTQ')
     fp_obj.format = 'FASTQ'
     logger.debug('Ignoring open_func, it will not be used')
-    logger.info('Conversion successful')
+    if not job.returncode == 0:
+        logger.critical('Conversion FAILED!')
+    else:
+        logger.info('Conversion successful')
     return
     
 @exit_on_Usage
@@ -231,10 +237,13 @@ def align2(fp_obj, references=[], counter_references=None,
     if fp_obj.paired_end: common_flags.extend(['-X', '600'])
     
     logger = get_logger(logging_level)
+    if references is None or references == []:
+        logger.critical('Nothing to do')
+        return 
     stdout_buffer = []
     
     if fp_obj.format == 'BAM' or fp_obj.format == 'SAM':
-        convert_to_fastq(fp_obj, logger=logger) 
+        convert_to_fastq(fp_obj, logger=logger)
     
     if not fp_obj.format == 'FASTQ':
         logger.critical('%s only supports FASTQ files' % __file__)

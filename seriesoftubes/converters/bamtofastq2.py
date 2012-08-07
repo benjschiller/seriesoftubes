@@ -15,6 +15,7 @@ from pysam import Samfile
 from sys import executable, stdin
 from subprocess import Popen
 import select
+from select import PIPE_BUF
 from .discover import PATH_TO_GZIP, gzip_class_factory
 
 class PairedBAMToFastqConverter(object):
@@ -111,16 +112,18 @@ def main():
     parser.add_argument('outfile2', help='(required for paired-end files) output filename for second mate')
     args = parser.parse_args()
     context = vars(args)
-    f = Samfile(context['infile'][0])
+    outfile1 = context['outfile1']
+    outfile2 = context['outfile2']
+    f = Samfile(context['infile'])
     incomplete_pairs = []
     if context['gzip']:
         if PATH_TO_GZIP is not None:
             open_func = gzip_class_factory(PATH_TO_GZIP)
-            fh1 = open_func(context['outfile1'], 'w')
-            fh2 = open_func(context['outfile2'], 'w')
+            fh1 = open_func(outfile1, 'w')
+            fh2 = open_func(outfile2, 'w')
         else:
-            fh1 = GzipFile(context['outfile1'], 'wb')
-            fh2 = GzipFile(context['outfile2'], 'wb')
+            fh1 = GzipFile(outfile1, 'wb')
+            fh2 = GzipFile(outfile2, 'wb')
         is_paired = False
         gzwrite = gzwriter(fh1, fh2)
         for aread in f:
@@ -142,8 +145,11 @@ def main():
         out2.close()
         f.close()
     else:
-        out1 = os.open(context['outfile1'], os.O_WRONLY|os.O_NONBLOCK)
-        out2 = os.open(context['outfile2'], os.O_WRONLY|os.O_NONBLOCK)
+        if not exists(outfile1): os.mknod(outfile1)
+        if outfile2 is not None:
+            if not exists(outfile2): os.mknod(outfile2)
+        out1 = os.open(outfile1, os.O_WRONLY|os.O_NONBLOCK)
+        out2 = os.open(outfile2, os.O_WRONLY|os.O_NONBLOCK)
         is_paired = False
         write = pair_writer(out1, out2)
         for aread in f:
