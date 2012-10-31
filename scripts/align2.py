@@ -5,10 +5,6 @@ with bowtie2, produces BAM files (sorted and indexed)
 output will be in ./align2
 In align2, there will be a folder for each reference genome
     e.g. align2/ref1 , align2/ref2, align2/ref1, align2/ref2
-In reference folder, there will be a folder for uniquely mapped alignments
-     and alignments including random sampling where necessary
-    (folder names are unique, random, respectively)
-    e.g. align2/ref1/random, align2/ref1/unique, etc.
 """
 import pysam
 import logging
@@ -54,8 +50,6 @@ def main():
     we'll look the for environment variable SOT_DEFAULT_REFERENCES, which 
     should be given as a list, e.g. "foo foo2 foo3"'''),
                         )
-    parser.add_argument('--no-unique', dest='unique', action='store_false',
-                        help='do not produce unique/ alignment folder') 
     parser.add_argument('--ignore-quality', dest='use_quality',
                         action='store_false',
                         help=dedent('''\
@@ -71,8 +65,8 @@ def main():
     Optional counter-reference genome/sequences to align against (either a bowtie2
     index name or file, or a fasta file). This flag may be called multiple times.
     All counter-references will be concatenated into one index, and reads will
-    be aligned in --no-unique (-M 1) mode. Any reads which align will be saved
-    in a separate directory called 'bad_reads' and not aligned against the
+    be aligned in --fast mode. Any reads which align will be saved
+    in a separate directory called 'counteraligned' and not aligned against the
     reference genomes/sequences. If no counter-references are specified, we'll 
     look the for environment variable SOT_DEFAULT_COUTNER_REFERENCES,
     which should be given as a list, e.g. "foo foo2 foo3"'''),
@@ -86,9 +80,14 @@ def main():
     e._sequence = merge_pairs(sequence)
     e.do_action(align2)
 
-def merge_pairs(sequence):
+def merge_pairs(old_sequence):
     """pair sequence files that differ only by 1/2 in one position
     """
+    new_sequence = []
+    sequence = []
+    for fp_obj in old_sequence:
+        if fp_obj.paired_end: new_sequence.append(fp_obj)
+        else: sequence.append(fp_obj)
     input_files = [fp_obj.input_file for fp_obj in sequence]
     mates = []
     for i in xrange(len(input_files)):
@@ -97,7 +96,13 @@ def merge_pairs(sequence):
         for j in xrange(i, len(input_files)):
             identity = [(not x==y) for x,y in zip(input_files[i], input_files[j])]
             if sum(identity) == 1:
-                these_mates.append(j)
+                index = identity.index(True)
+                if (input_files[i][index] == '1' and
+                    input_files[j][index] == '2') or \
+                   (input_files[i][index] == '2' and
+                    input_files[j][index] == '1'):
+                    these_mates.append(j)
+                    print i,j,input_files[i],input_files[j]
         if len(these_mates) == 0: continue
         elif len(these_mates) == 1:
             j = these_mates[0]
@@ -126,8 +131,9 @@ def merge_pairs(sequence):
             sequence[j].second_file = sequence[i].input_file
             sequence[j].paired_end = True
             mates.append(i)
-                    
-    return [x for i, x in enumerate(sequence) if not i in mates]
+
+    new_sequence.extend([x for i, x in enumerate(sequence) if not i in mates])
+    return new_sequence
 
 def fasta_to_bowtie2(fasta_file, target_dir=curdir, path_to_bowtie2='bowtie2'):
     """given a filename, makes a bowtie2 index

@@ -72,11 +72,11 @@ def main():
     """
     parser = ArgumentParser(description=__doc__)
     parser.add_argument('files', nargs='+', help='List of input files')
-    parser.add_argument('--no-gzip',
+    parser.add_argument('--no-gzip', action='store_true', default=False,
                         help='Do not compress output')
     parser.add_argument('--single-stdout',
                         help='Save single-end reads to here (default: stdout)',
-                        default=stdout)
+                        default=None)
     args = parser.parse_args()
     context = vars(args)
     read_files(**context)
@@ -145,7 +145,10 @@ def read_files(files=None, no_gzip=False, single_stdout=stdout):
                 open_func = gzip_class_factory(PATH_TO_GZIP)
             else:
                 open_func = GzipFile
-            fh1 = open_func(file1, 'wb')
+            if single_stdout is None:
+                fh1 = stdout
+            else:
+                fh1 = open_func(single_stdout, 'wb')
             for aread in f:
                 qname = aread.qname or ''
                 seq = aread.seq or ''

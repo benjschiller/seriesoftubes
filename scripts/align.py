@@ -298,6 +298,7 @@ def counteralign_once(fp_obj, flags, ref, **kwargs):
                        filename1]
         else:
             in_args = [sys.executable, '-m', 'seriesoftubes.converters.bamtofastq',
+                       '--no-gzip',
                        filename1]
     elif fp_obj.paired_end and fp_obj.format =='FASTQ':
         in_args = [sys.executable, '-m', 'seriesoftubes.converters.fastqtotab',
@@ -384,6 +385,7 @@ def align_once(fp_obj, flags, ref, match_type, use_quality=False,
                        filename1]
         else:
             in_args = [sys.executable, '-m', 'seriesoftubes.converters.bamtofastq',
+                       '--no-gzip',
                        filename1]
     elif fp_obj.paired_end and fp_obj.format =='FASTQ':
         in_args = [sys.executable, '-m', 'seriesoftubes.converters.fastqtotab',

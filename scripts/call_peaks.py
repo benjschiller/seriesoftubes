@@ -142,7 +142,7 @@ Could not determine genome / genome size for file %s' % input_file)
         logger.debug('Passing thru arguments %s', ' '.join(passthru_args))
     macs_options = ['--trackline',
                     '-f', fmt, # correct file format BAM or BAMPE
-                    '-B', #bedgraph
+                    '-B', '--SPMR', #bedgraphs, SPMR
                     '-g', genome_size,
                     '-q', qvalue,
                     '-n', name, # run name
