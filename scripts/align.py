@@ -123,7 +123,9 @@ def fastq_to_bowtie(fasta_file, target_dir=curdir, path_to_bowtie='bowtie'):
                 debug(' '.join(args))
                 P = Popen(args, stdout=open(devnull, 'w'), stderr=PIPE)
                 stderr = P.communicate()[1]
-                if stderr.splitlines()[0].startswith('Error'): return None
+                if len(stderr.splitlines()) == 0:
+                    return join(getcwd(), target_dir, fasta_file)
+                elif stderr.splitlines()[0].startswith('Error'): return None
                 else: return join(getcwd(), target_dir, fasta_file)
     return None
 
