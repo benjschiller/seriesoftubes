@@ -627,17 +627,31 @@ class MacsRow(list):
         '''returns the FDR (%). preserves the str to eliminate rounding error. use type=float to get a decimal value'''
         return type_(self[8])    
 
+class Macs2Row(MacsRow):
+    def FDR():
+        raise NotImplementedError
+    
+    def name(self):
+        return self[8]
+
 class MacsFile(TabFile):
     '''A MACS file is a type of TabFile, but also defines a method for working with rows. rows are given as instances of MACSRow, instead of lists. MACSrows inerhit all list methods and therefore are compatible with write_row. MacsRow has additional methods for chrom, chromStart, chromEnd, etc. For more info, see MacsRow'''
 
     def __init__(self, f, convert_spaces=True, **kwargs):
         super(MacsFile, self).__init__(f, column_names=True, **kwargs)
+        if self.column_dict().has_key('name'):
+            # MACS2 file
+            self.Row = Macs2Row
+            self.MACS_version = 2
+        else:
+            self.Row = MacsRow
+            self.MACS_version = 1
 
     def __iter__(self):
         '''returns the next (or first) line that is not a comment, parsed'''
         for line in self.__rawiter__():
             if not self.previous_line() in self.comment_line_numbers():
-                yield MacsRow(self._parse_line(line))
+                yield self.Row(self._parse_line(line))
 
 def shift_peaks(f, peak_lengths=2):
     '''

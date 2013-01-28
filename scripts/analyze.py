@@ -19,6 +19,8 @@ def main():
     e = Environment(doc=__doc__, version=VERSION)
     e.set_filename_parser(PeaksFilenameParser)
     parser = e.argument_parser
+    parser.add_argument('--bysummit', action='store_true', default=False,
+                        help='Assume FASTA files are centered at the summit, rather than spanning start to end.')
     parser.add_argument('--motif', required=True, dest='motif_file',
                         help='Path to file containing motif')
     parser.add_argument('--motif-number', type=int, default=1,
@@ -53,7 +55,7 @@ def action(fp_obj, motif_file=None, motif_type=None, motif_number=1,
                                fp_obj.fasta_file,
                                motif, bed=fp_obj.is_bed, xls=fp_obj.is_xls,
                                output_dir=fp_obj.output_dir,
-                               src_fnc = __file__)
+                               src_fnc = __file__, **kwargs)
     return stdout_buffer
                 
 if __name__=="__main__": main()

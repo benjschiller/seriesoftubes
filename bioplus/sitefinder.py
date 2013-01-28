@@ -50,7 +50,7 @@ def MOODS_search(seq, motif, thresholds=0):
             cmp=lambda x,y: cmp(abs(x), abs(y)))
     return results_sorted_like_Bio_Motif
 
-def search_peak(peak_ID, peak, peakseq, motif):
+def search_peak(peak_ID, peak, peakseq, motif, bysummit=False):
     '''provide information about matches to a motif in a
     peak region, and about the region
     
@@ -80,7 +80,7 @@ def search_peak(peak_ID, peak, peakseq, motif):
     a list of info about sites (motif matches)
     a list of BED rows for sites
     '''
-   
+    peak_length = len(peakseq)
     clean_peak_seq = _clean_sequence(peakseq)
     clean_peak_length = len(clean_peak_seq)
     clean_offset = peakseq.find(clean_peak_seq)
@@ -105,11 +105,15 @@ def search_peak(peak_ID, peak, peakseq, motif):
 
     try:
         peak_center = peak.summit()
+        peak_summit = peak.summit()
         if int(peak_center) > int(peak_coordinates[1]):
             peak_center -= int(peak_coordinates[1])
+        else:
+            peak_summit += int(peak_coordinates[1])
             
     except AttributeError:
         peak_center = clean_peak_length / 2 + clean_offset
+        peak_summit = int(peak_coordinates[1]) + peak_center
 
     try:
         peak_intensity = peak.tags()
@@ -144,9 +148,14 @@ def search_peak(peak_ID, peak, peakseq, motif):
 
         chrom = peak_coordinates[0]
         chrom_start = int(peak_coordinates[1])
-        site_BED_row = [chrom, chrom_start + offset,
-                    chrom_start + offset + motif_length,
-                    site_ID, Ri, strand]
+        if bysummit:
+            site_BED_row = [chrom, peak_summit - peak_length/2 + offset,
+                        peak_summit - peak_length/2 + offset + motif_length,
+                        site_ID, Ri, strand]
+        else:
+            site_BED_row = [chrom, chrom_start + offset,
+                        chrom_start + offset + motif_length,
+                        site_ID, Ri, strand]
 
         site_info_row = site_BED_row + [offset, site_seq,
                         peak_ID, clean_peak_length,
@@ -178,7 +187,7 @@ def search_peak(peak_ID, peak, peakseq, motif):
 
 def find_sites(peaks_file, fasta_file, motif, bed=True, xls=False,
                output_dir = None, motif_type = 'MEME',
-               src_fnc="find_sites", **kwargs):
+               src_fnc="find_sites", bysummit=False, **kwargs):
     '''
 findSites(peaks_file,FASTAfile,motif) takes the NAME_peaks.xls file outputed
 by MACS, as well as a FASTAfile, and finds instances of the motif specified by
@@ -228,7 +237,6 @@ Site (1) chr (2) start (3) end
     if type(motif) is str:
         motif = Bio.Motif.read(open(motif), motif_type)
 
-
     # start the output file
     prefix = os.path.splitext(os.path.basename(peaks_file))[0]
     if output_dir is not None: prefix = os.path.join(output_dir, prefix)
@@ -253,7 +261,8 @@ Site (1) chr (2) start (3) end
     sites_info.write(sites_msg)
 
     if bed: peak_generator = BedFile(peaks_file)
-    elif xls: peak_generator = MacsFile(peaks_file)
+    elif xls:
+        peak_generator = MacsFile(peaks_file)
     else: raise ValueError('Neither bed nor xls')
     # peakSeqs is a generator
     peak_seqs = (r.seq for r in Bio.SeqIO.parse(open(fasta_file, 'rU'),
@@ -261,15 +270,17 @@ Site (1) chr (2) start (3) end
     nosites = 0
     peaknumber = 0
     
-    for peak in peak_generator:
+    for peak in iter(peak_generator):
 #            if peaknumber%10000 is 0: print peaknumber
         peaknumber += 1
         seq = peak_seqs.next()
         # Generate a peak ID
-        peak_ID = '{!s}_{!s}'.format(prefix, peaknumber) 
+        try: peak_ID = peak.name()
+        except NameError: peak_ID = '{!s}_{!s}'.format(prefix, peaknumber)
+        # Change behavior to use sequences centered at summit 
         (peak_info, peak_bed,
          sites_info_rows, sites_bed_rows) = search_peak(peak_ID, peak, seq,
-                                                        motif)
+                                                        motif, bysummit=bysummit)
         peaks_info.write_row(peak_info)
         peaks_bed.write_row(peak_bed)
         sites_info.write_rows(sites_info_rows)
