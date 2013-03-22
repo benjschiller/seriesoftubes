@@ -9,9 +9,10 @@ We can
 + Cleave adaptor sequence from the 5' end
     + before barcode
     + after barcode
-+ Removing trailing Ns from sequences
 + Discard sequences that are less than 4 nucleotides in length
 + Produce gzipped FASTQ sequence files ready for immediate alignment
+
+TRAILING Ns ARE NO LONGER TRIMMED (per NCBI guidelines)
 
 A configuration file 'preprocess_reads.cfg' is saved in target
 directory (unless one is provided by the user).

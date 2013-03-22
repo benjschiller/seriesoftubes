@@ -178,16 +178,17 @@ cdef Record trim_record_3prime(Record record, int trim_length):
     record.read.qual[-trim_length] = b'\0'
     return record
 
-cdef Record trim_trailing_Ns(Record record):
-    '''
-    trim any trailing 3' 'N's
-    expects record is (barcode, (title, seq, qual))
-    returns truncated (barcode, (title, seq, qual))
-    '''
-    cdef int end = len(str.rstrip(record.read.seq, 'N'))
-    record.read.seq[end] = b'\0'
-    record.read.qual[end] = b'\0'
-    return record
+# Violates NCBI SRA requirements# Violates NCBI SRA requirements
+#cdef Record trim_trailing_Ns(Record record):
+#    '''
+#    trim any trailing 3' 'N's
+#    expects record is (barcode, (title, seq, qual))
+#    returns truncated (barcode, (title, seq, qual))
+#    '''
+#    cdef int end = len(str.rstrip(record.read.seq, 'N'))
+#    record.read.seq[end] = b'\0'
+#    record.read.qual[end] = b'\0'
+#    return record
 
 cdef Record cleave_linker(Record record, char *linker):
     cdef:
@@ -452,7 +453,7 @@ cdef Record apply_plan_to_read(tuple t, list barcodes, char *linker,
         record = trim_record_5prime(record, strip_after_barcode)
     if not linker == b'':
         record = cleave_linker(record, linker)
-    record = trim_trailing_Ns(record)
+#    record = trim_trailing_Ns(record)
     if max_length >= 0:
         record = truncate_record(record, max_length)
     return record

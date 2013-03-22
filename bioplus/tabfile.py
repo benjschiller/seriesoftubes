@@ -631,8 +631,11 @@ class Macs2Row(MacsRow):
     def FDR():
         raise NotImplementedError
     
+    def qvalue(self):
+        return float(self[8])
+    
     def name(self):
-        return self[8]
+        return self[9]
 
 class MacsFile(TabFile):
     '''A MACS file is a type of TabFile, but also defines a method for working with rows. rows are given as instances of MACSRow, instead of lists. MACSrows inerhit all list methods and therefore are compatible with write_row. MacsRow has additional methods for chrom, chromStart, chromEnd, etc. For more info, see MacsRow'''
