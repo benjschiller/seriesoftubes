@@ -45,30 +45,29 @@ class BarcodeFilenameParser(scripter.FilenameParser):
 
     def output_filename(self, barcode, is_barcode=True, no_gzip=False):
         file_ext = self.file_extension
-        if no_gzip: end = '' 
-        else: end = '.gz'
         if is_barcode:
-            return os.path.join(self.output_dir,
+            ret = os.path.join(self.output_dir,
                                 os.extsep.join([self.protoname,
                                                 'barcode_' + barcode,
-                                                file_ext + end]))
+                                                file_ext]))
         else:
-            return os.path.join(self.output_dir,
+            ret = os.path.join(self.output_dir,
                                 os.extsep.join([self.protoname,
-                                                barcode,
-                                                file_ext + end]))
+                                                barcode, file_ext]))
+        if ret.endswith("gz") or no_gzip: return ret
+        else: return os.extsep.join([ret, "gz"])
             
     def output_filename2(self, barcode, is_barcode=True, no_gzip=False):
         file_ext = self.file_extension
-        if no_gzip: end = '' 
-        else: end = '.gz'
         if is_barcode:
-            return os.path.join(self.output_dir,
+            ret = os.path.join(self.output_dir,
                                 os.extsep.join([self.protoname2,
                                                 'barcode_' + barcode,
-                                                file_ext + end]))
+                                                file_ext]))
         else:
-            return os.path.join(self.output_dir,
+            ret = os.path.join(self.output_dir,
                                 os.extsep.join([self.protoname2,
                                                 barcode,
-                                                file_ext + end]))
+                                                file_ext]))
+        if ret.endswith("gz") or no_gzip: return ret
+        else: return os.extsep.join([ret, "gz"])
