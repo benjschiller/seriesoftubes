@@ -256,6 +256,53 @@ cdef Record assign_read(Read read, list barcodes):
         record.barcode = b''
     return record
 
+cdef Record assign_read_no_clip(Read read, list barcodes, int offset):
+    """
+    Assign a record to a barcode
+    returns (barcode, new_record)
+    if unmatched, returns (None, record)
+    """
+#    title, seq, qual = record/
+#    title_head, last_part = title.rsplit(':', 1)
+    cdef:
+        bytes title_head, last_part
+        int pound_loc, slash_loc
+        char *barcode
+        int barcode_len
+        int n_barcodes = len(barcodes)
+        Record record
+    record.read = read
+
+    if n_barcodes == 0:
+        record.barcode = b''
+        return record
+    title_head, last_part = read.title.rsplit(':', 1)
+    if last_part.isalpha():
+        # CASAVA 1.8 file
+        record.barcode = match_barcode(<bytes>last_part.rstrip(), barcodes)
+        return record 
+    pound_loc = last_part.find('#')
+    slash_loc = last_part[pound_loc:].find('/')
+    if slash_loc != -1:
+        barcode = <bytes>last_part[(pound_loc+1):(pound_loc+slash_loc)]
+    else:
+        barcode = <bytes>last_part[(pound_loc+1):]
+    if barcode==b'0':
+        record.barcode = match_barcode(read.seq + offset, barcodes)
+        barcode_len = len(record.barcode)
+        if not record.barcode == <bytes>'':
+            last_part = last_part[0:(pound_loc+1)] + barcode + last_part[(pound_loc+slash_loc):]
+            record.read.title = <bytes>('%s:%s' %( title_head , last_part ))
+    elif barcode.isdigit():
+        # then we have a numbered index from Illumina, just use it as-is
+        record.barcode = barcode
+    elif barcode.isalpha():
+        # then we already extracted the barcode at some point, try to match it
+        record.barcode = match_barcode(barcode, barcodes)
+    else:
+        record.barcode = b''
+    return record
+
 cdef bool too_short(Read read, int min_length):
     cdef char c
     cdef int i = 0, L = 0
@@ -298,12 +345,12 @@ cdef int write_record(Record record, barcoded_files=None,
     return 0
         
 cdef int_pair write_record_pair(RecordPair assigned_record_pair,
-                      barcoded_file_pairs=None,
-                      unmatched_files=None,
-                      processed_files=None,
-                      orphaned_read_files=None,
-                      mismatched_files=None,
-                      linker='', int min_length=4):
+                      object barcoded_file_pairs=None,
+                      object unmatched_files=None,
+                      object processed_files=None,
+                      object orphaned_read_files=None,
+                      object mismatched_files=None,
+                      str linker='', int min_length=4):
     """
     write the assigned_record to the correct barcode file
     an assigned_record is a (barcode, (title, seq, qual)) (all strs)
@@ -339,7 +386,6 @@ cdef int_pair write_record_pair(RecordPair assigned_record_pair,
         
         str line_fmt
         bool is_processed = (barcoded_file_pairs is None)
-
     # check if record 1 is valid
     if is_linker1: problem = ERR_LINKER
     elif is_too_short1: problem = ERR_TOO_SHORT
@@ -351,9 +397,9 @@ cdef int_pair write_record_pair(RecordPair assigned_record_pair,
     ret.right = problem2
 
     # abort write if both reads have problems
-    if (not problem=='') or (not problem2 == ''):
+    if (not problem == 0) or (not problem2 == 0):
     # if only one read has a problem, use write_record instead
-        if not problem2 == '':
+        if not problem2 == 0:
             if is_processed: orphaned_read_files[0].write(line)
             else: mismatched_files[0].write(line)
         else:
@@ -384,9 +430,10 @@ cdef int_pair write_record_pair(RecordPair assigned_record_pair,
 cpdef dict apply_plan(reads, writer_args, list barcodes=[], str linker='',
                  int min_length=4, int max_length = -1,
                  int strip_after_barcode = 1, int strip_before_barcode=0,
+                 bool no_clipping=False,
                  logger=None):
     cdef:
-        int i, n_short=0, n_linker=0
+        int i=0, n_short=0, n_linker=0
         char *llinker = <bytes>linker
         int result
         Record record
@@ -395,7 +442,8 @@ cpdef dict apply_plan(reads, writer_args, list barcodes=[], str linker='',
         i += 1
         record = apply_plan_to_read(read, barcodes, llinker,
                  min_length, max_length,
-                 strip_after_barcode, strip_before_barcode)
+                 strip_after_barcode, strip_before_barcode,
+                 no_clipping)
         result = write_record(record,
                               writer_args['barcoded_files'],
                               writer_args['unmatched_file'],
@@ -410,27 +458,31 @@ cpdef dict apply_plan_pe(reads, reads2, writer_args, list barcodes=[],
                          str linker='',
                  int min_length=4, int max_length = -1,
                  int strip_after_barcode = 1, int strip_before_barcode=0,
-                 logger=None):
+                 bool no_clipping=False, logger=None):
     cdef:
-        int i, n_short = 0, n_linker = 0
+        int i = 0, n_short = 0, n_linker = 0
         char *llinker = <bytes>linker
         int_pair result
         Record record
         tuple read, read2
     for read in reads:
         i += 1
-        read2 = read2.next()
+        read2 = reads2.next()
         record = apply_plan_to_read(read, barcodes, llinker,
                  min_length, max_length,
-                 strip_after_barcode, strip_before_barcode)
+                 strip_after_barcode, strip_before_barcode,
+                 no_clipping)
         record2 = apply_plan_to_read(read2, barcodes, llinker,
                  min_length, max_length,
-                 strip_after_barcode, strip_before_barcode)
+                 strip_after_barcode, strip_before_barcode,
+                 no_clipping)
         record_pair = pair(record, record2)
         result = write_record_pair(record_pair,
-                              writer_args['barcoded_files'],
-                              writer_args['unmatched_file'],
-                              writer_args['processed_file'],
+                              writer_args['barcoded_file_pairs'],
+                              writer_args['unmatched_files'],
+                              writer_args['processed_files'],
+                              writer_args['orphaned_read_files'],
+                              writer_args['mismatched_files'],
                               linker,
                               min_length)
         if result.left == ERR_LINKER or result.right == ERR_LINKER: n_linker += 1
@@ -441,11 +493,16 @@ cpdef dict apply_plan_pe(reads, reads2, writer_args, list barcodes=[],
 
 cdef Record apply_plan_to_read(tuple t, list barcodes, char *linker,
                  int min_length, int max_length,
-                 int strip_after_barcode, int strip_before_barcode):
+                 int strip_after_barcode, int strip_before_barcode,
+                 bool no_clipping):
     cdef:
         Record record
         Read read
     read = as_read(t[0], t[1], t[2])
+    if no_clipping:
+        record = assign_read_no_clip(read, barcodes, strip_before_barcode)
+        return record
+    
     if strip_before_barcode > 0:
         read = pretrim_record_5prime(read, strip_before_barcode)
     record = assign_read(read, barcodes)

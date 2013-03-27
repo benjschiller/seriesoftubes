@@ -49,6 +49,8 @@ def valid_seq(s):
 def main():
     e = Environment(version=VERSION, doc=__doc__)
     parser = e.argument_parser
+    parser.add_argument('--no-clipping', default=False, action='store_true',
+                        help = 'Do not clip barcodes from reads when assigning to barcode. OVERRIDES ALL OTHER CLIPPING OPTIONS')
     parser.add_argument('--strip-after-barcode', default=1, type=int,
                         help="""strip n bases after the barcode is removed (5' end)
 (by default this 1 now, and is ignored if GERALD handled the barcoding)""")
@@ -128,7 +130,8 @@ def split_file(fp_obj, no_gzip=False,
                barcodes=[], linker='', min_length=4,
                max_length=-1, logger=None,
                strip_before_barcode=0,
-               strip_after_barcode=0, 
+               strip_after_barcode=0,
+               no_clipping=False,
                **kwargs):
     if logger is None: logger = get_logger()
     filename = fp_obj.input_file
@@ -172,6 +175,7 @@ def split_file(fp_obj, no_gzip=False,
                                min_length=min_length, max_length=max_length,
                                strip_after_barcode=strip_after_barcode,
                                strip_before_barcode=strip_before_barcode,
+                               no_clipping=no_clipping,
                                logger=logger)
     linker_only = results['linker']
     too_short = results['short']
@@ -200,6 +204,7 @@ def split_paired_files(fp_obj, no_gzip=False,
                        strip_before_barcode=0,
                        strip_after_barcode=0,
                        logger=None,
+                       no_clipping=False,
                        **kwargs):
     filename = fp_obj.input_file
     filename2 = fp_obj.second_file
@@ -278,6 +283,7 @@ def split_paired_files(fp_obj, no_gzip=False,
                             max_length=max_length,
                             strip_after_barcode=strip_after_barcode,
                             strip_before_barcode=strip_before_barcode,
+                            no_clipping=no_clipping,
                             logger=logger)
     linker_only = results['linker']
     too_short = results['short']
