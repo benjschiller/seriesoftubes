@@ -267,7 +267,6 @@ def split_paired_files(fp_obj, no_gzip=False,
                            open_func(processed_filename2, 'w'))
         filenames.extend((orphaned_read_filename, orphaned_read_filename2),
                          (processed_filename, processed_filename2))
-        
     writer_args = {'barcoded_file_pairs': barcoded_file_pairs,
                    'unmatched_files': unmatched_files,
                    'mismatched_files': mismatched_files,

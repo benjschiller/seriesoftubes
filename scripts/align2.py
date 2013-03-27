@@ -71,6 +71,8 @@ def main():
     look the for environment variable SOT_DEFAULT_COUTNER_REFERENCES,
     which should be given as a list, e.g. "foo foo2 foo3"'''),
                         )
+    parser.add_argument('--passthru-args', nargs='*',
+                        help='A list of arguments to be passed through to bowtie2 [alignment and counter-alignment]. Substitute + for - (e.g., --passthru-args +m 4 50')
     context = e.get_context()
     new_references = validate_references(**context)
     new_counter_references = cat_counter_references(**context)
@@ -283,7 +285,9 @@ def convert_to_fastq(fp_obj, logger=None):
 @exit_on_Usage
 def align2(fp_obj, references=[], counter_references=None,
           unique=True, seed_len='28',
-          use_quality=True, logging_level=10, num_cpus=1, **kwargs):
+          use_quality=True, logging_level=10, num_cpus=1,
+          passthru_args=None,
+          **kwargs):
     common_flags = ['--time', '-p', str(num_cpus), '-L', seed_len]
     if fp_obj.paired_end: common_flags.extend(['-X', '600'])
     
@@ -300,6 +304,12 @@ def align2(fp_obj, references=[], counter_references=None,
         logger.critical('%s only supports FASTQ files' % __file__)
         return
     
+    if passthru_args is not None:
+        for i in range(len(passthru_args)):
+            passthru_args[i] = passthru_args[i].replace('+', '-')
+        logger.debug('Passing thru arguments %s', ' '.join(passthru_args))
+    kwargs['passthru_args'] = passthru_args
+        
     if counter_references is not None:
         #counter align first
         flags = [item for item in common_flags]
@@ -325,7 +335,10 @@ def make_paired_name(name1, name2):
         index = identity.index(True)
         return identity[0:index] + '%' + identity[(index + 1):]
 
-def counteralign_once(**kwargs):
+def counteralign_once(fp_obj, flags, ref, use_quality=False,
+               path_to_bowtie2=None, path_to_samtools=None, logger=None,
+               passthru_args=None,
+               **kwargs):
     """Produce counter-alignements"""
     if use_quality:
         if fp_obj.use_pysam: flags.append('--phred33')
@@ -358,8 +371,11 @@ def counteralign_once(**kwargs):
                      '--al-gz', join(output_dir, 'counteraligned', input_file),
                      '--un-gz', join(output_dir, input_file)]
         new_filenames = (join(output_dir, input_file), None)
-        
-    bowtie2_args = [path_to_bowtie2] + flags + file_args
+    
+    if passthru_args is not None:
+        bowtie2_args = [path_to_bowtie2] + flags + passthru_args + file_args
+    else:
+        bowtie2_args = [path_to_bowtie2] + flags + file_args
     
     # finish parsing input here
     bowtie2_stdout = PolledPipe(logger=logger, level=logging.ERROR)
@@ -386,6 +402,7 @@ def counteralign_once(**kwargs):
 
 def align_once(fp_obj, flags, ref, use_quality=False,
                path_to_bowtie2=None, path_to_samtools=None, logger=None,
+               passthru_args=None,
                **kwargs):
     if use_quality:
         if fp_obj.use_pysam: flags.append('--phred33')
@@ -404,8 +421,11 @@ def align_once(fp_obj, flags, ref, use_quality=False,
         file_args = ['-x', ref, '-1', filename1, '-2', filename2]  
     else:
         file_args = ['-x', ref, '-U', filename1]
-  
-    bowtie2_args = [path_to_bowtie2] + flags + file_args
+    
+    if passthru_args:
+        bowtie2_args = [path_to_bowtie2] + flags + passthru_args + file_args
+    else:
+        bowtie2_args = [path_to_bowtie2] + flags + file_args
     
     # finish parsing input here
     bowtie2_stderr = PolledPipe(logger=logger, level=logging.ERROR)
