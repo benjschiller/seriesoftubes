@@ -1,8 +1,10 @@
 # cython: profile=True
 from cpython cimport bool
+from libc.stdlib cimport malloc, free
 
 DEF ERR_TOO_SHORT = 1
 DEF ERR_LINKER = 2
+DEF MAX_FASTQ_SIZE = 131072
 
 cdef struct int_pair:
     int left
@@ -86,34 +88,35 @@ cdef struct Read:
     char *seq
     char *qual
 
-cdef Read asRead(str title, str seq, str qual):
-    cdef Read read
-    read.title = <bytes>title
-    read.seq = <bytes>seq
-    read.qual = <bytes>qual
-    return read
+#cdef Read asRead(str title, str seq, str qual):
+#    cdef Read read
+#    read.title = <bytes>title
+#    read.seq = <bytes>seq
+#    read.qual = <bytes>qual
+#    return read
 
 cdef struct Record:
     char *barcode
-    Read read
+    Read *read
 
-cdef Record asRecord(str barcode, str title, str seq, str qual):
-    cdef Record record
-    record.barcode = <bytes>barcode
-    record.read = asRead(title, seq, qual)
-    return record
+#cdef Record asRecord(str barcode, str title, str seq, str qual):
+#    cdef Record record
+#    record.barcode = <bytes>barcode
+#    record.read = asRead(title, seq, qual)
+#    return record
 
-cdef struct RecordPair:
-    Record first
-    Record second
+#cdef struct s_RecordPair:
+#    Record *first
+#    Record *second
+#
+#ctypedef s_RecordPair RecordPair
+#cdef RecordPair pair(Record record1, Record record2):
+#    cdef RecordPair rp
+#    rp.first = record1
+#    rp.second = record2
+#    return rp
 
-cdef RecordPair pair(Record record1, Record record2):
-    cdef RecordPair rp
-    rp.first = record1
-    rp.second = record2
-    return rp
-
-cdef char *match_barcode(char *seq, list barcodes, int mismatches=1):
+cdef bytes match_barcode(bytes seq, list barcodes, int mismatches=1):
     """
     try to match seq to a list of barcodes
     allow mismatches (default 1)
@@ -125,8 +128,8 @@ cdef char *match_barcode(char *seq, list barcodes, int mismatches=1):
         int max_barcode_length = max(barcode_lengths)
         int seq_len = len(seq)
         int barcode_length
-        char *accepted = ''
-        char *barcode, comparable
+        bytes accepted = b''
+        bytes barcode
         int hamming, i, j
     for i in range(n_barcodes):
         barcode = barcodes[i]
@@ -137,46 +140,44 @@ cdef char *match_barcode(char *seq, list barcodes, int mismatches=1):
             if barcode[j] != seq[j]: hamming += 1
         if mismatches > hamming:
             if accepted == b'': accepted = barcode
-            else: return b''
+            else:
+                accepted = b''
+                break
     return accepted
 
-cdef Read pretrim_record_5prime(Read read, int trim_length):
+cdef void *pretrim_read_5prime(Read *read, int trim_length):
     '''
     trim an assigned record from the 5' end
     expects (barcode, (title, seq, qual))
     '''
-    read.seq += trim_length
-    read.qual += trim_length 
-    return read
+    read[0].seq += trim_length
+    read[0].qual += trim_length
 
-cdef Record trim_record_5prime(Record record, int trim_length):
+cdef void *trim_read_5prime(Read *read, int trim_length):
     '''
     trim an assigned record from the 5' end
     expects (barcode, (title, seq, qual))
     '''
-    record.read.seq += trim_length
-    record.read.qual += trim_length
-    return record
+    read[0].seq += trim_length
+    read[0].qual += trim_length
     
-cdef Record truncate_record(Record record, int max_length):
+cdef void *truncate_read(Read *read, int max_length):
     '''
     truncate a record so that it is at most max_length
     starting at the 5' end 
     expects (barcode, (title, seq, qual))
     '''
-    record.read.seq[max_length] = b'\0'
-    record.read.qual[max_length] = b'\0'
-    return record
+    read[0].seq[max_length] = b'\0'
+    read[0].qual[max_length] = b'\0'
 
-cdef Record trim_record_3prime(Record record, int trim_length):
+cdef void *trim_read_3prime(Read *read, int trim_length):
     '''
     trim a record from the 3' end
     expects (barcode, (title, seq, qual))
     '''
-    if trim_length == 0: return record
-    record.read.seq[-trim_length] = b'\0'
-    record.read.qual[-trim_length] = b'\0'
-    return record
+    if trim_length != 0:
+        read[0].seq[-trim_length] = b'\0'
+        read[0].qual[-trim_length] = b'\0'
 
 # Violates NCBI SRA requirements# Violates NCBI SRA requirements
 #cdef Record trim_trailing_Ns(Record record):
@@ -190,15 +191,15 @@ cdef Record trim_record_3prime(Record record, int trim_length):
 #    record.read.qual[end] = b'\0'
 #    return record
 
-cdef Record cleave_linker(Record record, char *linker):
+cdef void *cleave_linker(Record *record, char *linker):
     cdef:
-        int i = str.find(record.read.seq, linker)
-    if i == -1: return record
-    else:
-        record.barcode = linker
-        record.read.seq[i] = b'\0'
-        record.read.qual[i] = b'\0'
-        return record
+        Read *read = record[0].read
+        int i
+    i = str.find(read.seq, linker)
+    if i != -1:
+        record[0].barcode = linker
+        read[0].seq[i] = b'\0'
+        read[0].qual[i] = b'\0'
 
 cdef Read as_read(bytes title, bytes seq, bytes qual):
     cdef Read read
@@ -207,7 +208,13 @@ cdef Read as_read(bytes title, bytes seq, bytes qual):
     read.qual = qual
     return read
 
-cdef Record assign_read(Read read, list barcodes):
+cdef Read *as_read2(tuple t):
+    cdef Read read
+    read.title = <bytes>t[0]
+    read.seq = <bytes>t[1]
+    read.qual = <bytes>t[2]
+
+cdef bytes assign_read(Read *read, list barcodes):
     """
     Assign a record to a barcode
     returns (barcode, new_record)
@@ -218,45 +225,41 @@ cdef Record assign_read(Read read, list barcodes):
     cdef:
         bytes title_head, last_part
         int pound_loc, slash_loc
-        char *barcode
+        bytes barcode
         int barcode_len
         int n_barcodes = len(barcodes)
-        Record record
-    record.read = read
 
     if n_barcodes == 0:
-        record.barcode = b''
-        return record
-    title_head, last_part = read.title.rsplit(':', 1)
-    if last_part.isalpha():
-        # CASAVA 1.8 file
-        record.barcode = match_barcode(<bytes>last_part.rstrip(), barcodes)
-        return record 
-    pound_loc = last_part.find('#')
-    slash_loc = last_part[pound_loc:].find('/')
-    if slash_loc != -1:
-        barcode = <bytes>last_part[(pound_loc+1):(pound_loc+slash_loc)]
+        barcode = b''
     else:
-        barcode = <bytes>last_part[(pound_loc+1):]
-    if barcode==b'0':
-        record.barcode = match_barcode(read.seq, barcodes)
-        barcode_len = len(record.barcode)
-        record.read.seq += barcode_len
-        record.read.qual += barcode_len
-        if not record.barcode == <bytes>'':
-            last_part = last_part[0:(pound_loc+1)] + barcode + last_part[(pound_loc+slash_loc):]
-            record.read.title = <bytes>('%s:%s' %( title_head , last_part ))
-    elif barcode.isdigit():
-        # then we have a numbered index from Illumina, just use it as-is
-        record.barcode = barcode
-    elif barcode.isalpha():
-        # then we already extracted the barcode at some point, try to match it
-        record.barcode = match_barcode(barcode, barcodes)
-    else:
-        record.barcode = b''
-    return record
+        title_head, last_part = read.title.rsplit(':', 1)
+        if last_part.isalpha():
+            # CASAVA 1.8 file
+            barcode = match_barcode(<bytes>last_part.rstrip(), barcodes)
+        else:
+            pound_loc = last_part.find('#')
+            slash_loc = last_part[pound_loc:].find('/')
+            if slash_loc != -1:
+                barcode = <bytes>last_part[(pound_loc+1):(pound_loc+slash_loc)]
+            else:
+                barcode = <bytes>last_part[(pound_loc+1):]
+            if barcode==b'0':
+                barcode = match_barcode(<bytes>read.seq, barcodes)
+                barcode_len = len(barcode)
+                read.seq += barcode_len
+                read.qual += barcode_len
+            elif barcode.isdigit():
+                # then we have a numbered index from Illumina, just use it as-is
+                #record.barcode = barcode
+                pass
+            elif barcode.isalpha():
+                # then we already extracted the barcode at some point, try to match it
+                barcode = match_barcode(barcode, barcodes)
+            else:
+                barcode = b''
+    return barcode
 
-cdef Record assign_read_no_clip(Read read, list barcodes, int offset):
+cdef bytes assign_read_no_clip(Read *read, list barcodes, int offset):
     """
     Assign a record to a barcode
     returns (barcode, new_record)
@@ -267,43 +270,38 @@ cdef Record assign_read_no_clip(Read read, list barcodes, int offset):
     cdef:
         bytes title_head, last_part
         int pound_loc, slash_loc
-        char *barcode
+        bytes barcode = b''
         int barcode_len
         int n_barcodes = len(barcodes)
-        Record record
-    record.read = read
 
     if n_barcodes == 0:
-        record.barcode = b''
-        return record
-    title_head, last_part = read.title.rsplit(':', 1)
-    if last_part.isalpha():
-        # CASAVA 1.8 file
-        record.barcode = match_barcode(<bytes>last_part.rstrip(), barcodes)
-        return record 
-    pound_loc = last_part.find('#')
-    slash_loc = last_part[pound_loc:].find('/')
-    if slash_loc != -1:
-        barcode = <bytes>last_part[(pound_loc+1):(pound_loc+slash_loc)]
+        barcode = b''
     else:
-        barcode = <bytes>last_part[(pound_loc+1):]
-    if barcode==b'0':
-        record.barcode = match_barcode(read.seq + offset, barcodes)
-        barcode_len = len(record.barcode)
-        if not record.barcode == <bytes>'':
-            last_part = last_part[0:(pound_loc+1)] + barcode + last_part[(pound_loc+slash_loc):]
-            record.read.title = <bytes>('%s:%s' %( title_head , last_part ))
-    elif barcode.isdigit():
-        # then we have a numbered index from Illumina, just use it as-is
-        record.barcode = barcode
-    elif barcode.isalpha():
-        # then we already extracted the barcode at some point, try to match it
-        record.barcode = match_barcode(barcode, barcodes)
-    else:
-        record.barcode = b''
-    return record
+        title_head, last_part = read[0].title.rsplit(':', 1)
+        if last_part.isalpha():
+            # CASAVA 1.8 file
+            barcode = match_barcode(<bytes>last_part.rstrip(), barcodes)
+        else:
+            pound_loc = last_part.find('#')
+            slash_loc = last_part[pound_loc:].find('/')
+            if slash_loc != -1:
+                barcode = <bytes>last_part[(pound_loc+1):(pound_loc+slash_loc)]
+            else:
+                barcode = <bytes>last_part[(pound_loc+1):]
+            if barcode == b'0':
+                barcode = match_barcode(read.seq + offset, barcodes)
+                barcode_len = len(barcode)
+            elif barcode.isdigit():
+                # then we have a numbered index from Illumina, just use it as-is
+                pass
+            elif barcode.isalpha():
+                # then we already extracted the barcode at some point, try to match it
+                barcode = match_barcode(barcode, barcodes)
+            else:
+                barcode = b''
+    return barcode
 
-cdef bool too_short(Read read, int min_length):
+cdef bool too_short(Read *read, int min_length):
     cdef char c
     cdef int i = 0, L = 0
     for c in read.seq:
@@ -311,7 +309,7 @@ cdef bool too_short(Read read, int min_length):
         if c == b'N': i += 1
     return L - i < min_length
 
-cdef int write_record(Record record, barcoded_files=None,
+cdef int write_record(Record *record, barcoded_files=None,
                         unmatched_file=None,
                         processed_file=None,
                         str linker='', int min_length=4):
@@ -344,48 +342,47 @@ cdef int write_record(Record record, barcoded_files=None,
     else: barcoded_files[barcode].write(line)
     return 0
         
-cdef int_pair write_record_pair(RecordPair assigned_record_pair,
-                      object barcoded_file_pairs=None,
-                      object unmatched_files=None,
-                      object processed_files=None,
-                      object orphaned_read_files=None,
-                      object mismatched_files=None,
-                      str linker='', int min_length=4):
+cdef int_pair write_record_pair(Record *record, Record *record2,
+                                object barcoded_file_pairs=None,
+                                object unmatched_files=None,
+                                object processed_files=None,
+                                object orphaned_read_files=None,
+                                object mismatched_files=None,
+                                str linker='', int min_length=4):
     """
     write the assigned_record to the correct barcode file
     an assigned_record is a (barcode, (title, seq, qual)) (all strs)
     
-    will not work unless you provide a dictionary of barcoded_file_pairss and
+    will not work unless you provide a dictionary of barcoded_file_pairs and
     unmatched_files and mismatched_files (2-tuples of file object)
     """
     cdef:
         int_pair ret
-        Record record = assigned_record_pair.first
-        str barcode = record.barcode
-        str title = record.read.title
-        str seq = record.read.seq
-        str qual = record.read.qual
-        int problem = 0
-        str line = "@%s\n%s\n+%s\n%s\n" % (title, seq, title, qual)
-        bool is_linker1 = (len(seq) == 0
-                           and not (linker == '')
-                           and barcode == linker)
-        bool is_too_short1 = too_short(record.read, min_length)
-                
-        Record record2 = assigned_record_pair.second
-        str barcode2 = record2.barcode
-        str title2 = record2.read.title
-        str seq2 = record2.read.seq
-        str qual2 = record2.read.qual
-        int problem2 = 0
-        str line2 = "@%s\n%s\n+%s\n%s\n" % (title2, seq2, title2, qual2)
-        bool is_linker2 = (len(seq2) == 0
-                           and not (linker == '')
-                           and barcode2 == linker)
-        bool is_too_short2 = too_short(record.read, min_length)
         
-        str line_fmt
+        str barcode, title, seq, qual, line
+        int problem = 0, problem2 = 0
+        bool is_linker1, is_too_short1
+                
+        str barcode2, title2, seq2, qual2, line2
+        bool is_linker2, is_too_short2
         bool is_processed = (barcoded_file_pairs is None)
+    
+    barcode = record.barcode
+    title = record.read.title
+    seq = record.read.seq
+    qual = record.read.qual
+    line = "@%s\n%s\n+%s\n%s\n" % (title, seq, title, qual)
+    is_linker1 = len(seq) == 0 and (not linker == '') and barcode == linker
+    is_too_short1 = too_short(record.read, min_length)
+            
+    barcode2 = record2.barcode
+    title2 = record2.read.title
+    seq2 = record2.read.seq
+    qual2 = record2.read.qual
+    line2 = "@%s\n%s\n+%s\n%s\n" % (title2, seq2, title2, qual2)
+    is_linker2 = len(seq2) == 0 and (not linker == '') and barcode2 == linker
+    is_too_short2 = too_short(record2.read, min_length)
+    
     # check if record 1 is valid
     if is_linker1: problem = ERR_LINKER
     elif is_too_short1: problem = ERR_TOO_SHORT
@@ -406,7 +403,7 @@ cdef int_pair write_record_pair(RecordPair assigned_record_pair,
             if is_processed: orphaned_read_files[1].write(line2)
             else: mismatched_files[1].write(line2)
         return ret
-        
+    
     # select output files
     if barcoded_file_pairs is None:
         output_file = processed_files[0]
@@ -436,11 +433,22 @@ cpdef dict apply_plan(reads, writer_args, list barcodes=[], str linker='',
         int i=0, n_short=0, n_linker=0
         char *llinker = <bytes>linker
         int result
-        Record record
-        tuple read, read2
-    for read in reads:
+        Record *record = <Record *>malloc(sizeof(Record))
+        Read *read = <Read *>malloc(sizeof(Read))
+    record.read = read
+    while True:
         i += 1
-        record = apply_plan_to_read(read, barcodes, llinker,
+        try: t = reads.next()
+        except StopIteration: break
+        read.title = <char *>malloc(len(t[0]))
+        read.seq = <char *>malloc(len(t[1]))
+        record.barcode = <char *>malloc(len(t[1]))
+        read.qual = <char *>malloc(len(t[2]))
+        read.title = <bytes>(t[0])
+        read.seq = <bytes>(t[1])
+        read.qual = <bytes>(t[2])
+        apply_plan_to_read(record,
+                 read, barcodes, llinker,
                  min_length, max_length,
                  strip_after_barcode, strip_before_barcode,
                  no_clipping)
@@ -462,22 +470,57 @@ cpdef dict apply_plan_pe(reads, reads2, writer_args, list barcodes=[],
     cdef:
         int i = 0, n_short = 0, n_linker = 0
         char *llinker = <bytes>linker
+        char *dummy = ''
         int_pair result
-        Record record
-        tuple read, read2
-    for read in reads:
+        Record *record = <Record *>malloc(sizeof(Record))
+        Record *record2 = <Record *>malloc(sizeof(Record))
+        Read *read = <Read *>malloc(sizeof(Read))
+        Read *read2 = <Read *>malloc(sizeof(Read))
+        tuple t, t2
+    record.read = read
+    record2.read = read2
+    # Allocate ~1 MB of memory each
+    # Should be enough for any sequence???
+    read.title = <char *>malloc(MAX_FASTQ_SIZE)
+    read.seq = <char *>malloc(MAX_FASTQ_SIZE)
+    record.barcode = <char *>malloc(MAX_FASTQ_SIZE)
+    read.qual = <char *>malloc(MAX_FASTQ_SIZE)
+    read2.title = <char *>malloc(MAX_FASTQ_SIZE)
+    read2.seq = <char *>malloc(MAX_FASTQ_SIZE)
+    record2.barcode = <char *>malloc(MAX_FASTQ_SIZE)
+    read2.qual = <char *>malloc(MAX_FASTQ_SIZE)
+    while True:
         i += 1
-        read2 = reads2.next()
-        record = apply_plan_to_read(read, barcodes, llinker,
+#        read = as_read(t[0], t[1], t[2])
+        try:
+            t = reads.next()
+        except StopIteration:
+            try: reads2.next()
+            except StopIteration: pass
+            else: raise SyntaxWarning('More reads left in second file')
+            finally: break
+        
+        t2 = reads2.next()
+        
+        read.title = <bytes>(t[0])
+        read.seq = <bytes>(t[1])
+        read.qual = <bytes>(t[2])
+        read2.title = <bytes>(t2[0])
+        read2.seq = <bytes>(t2[1])
+        read2.qual = <bytes>(t2[2])
+
+        apply_plan_to_read(record,
+                 read, barcodes, llinker,
                  min_length, max_length,
                  strip_after_barcode, strip_before_barcode,
                  no_clipping)
-        record2 = apply_plan_to_read(read2, barcodes, llinker,
+        apply_plan_to_read(record2,
+                 read2, barcodes, llinker,
                  min_length, max_length,
                  strip_after_barcode, strip_before_barcode,
                  no_clipping)
-        record_pair = pair(record, record2)
-        result = write_record_pair(record_pair,
+    
+        result = write_record_pair(record, record2,
                               writer_args['barcoded_file_pairs'],
                               writer_args['unmatched_files'],
                               writer_args['processed_files'],
@@ -485,33 +528,29 @@ cpdef dict apply_plan_pe(reads, reads2, writer_args, list barcodes=[],
                               writer_args['mismatched_files'],
                               linker,
                               min_length)
-        if result.left == ERR_LINKER or result.right == ERR_LINKER: n_linker += 1
+        if result.left == ERR_LINKER or result.right == ERR_LINKER:
+            n_linker += 1
         else:
             if result.left == ERR_TOO_SHORT: n_short += 1
             if result.right == ERR_TOO_SHORT: n_short += 1
     return {'all': i, 'short': n_short, 'linker': n_linker}
 
-cdef Record apply_plan_to_read(tuple t, list barcodes, char *linker,
+cdef void *apply_plan_to_read(Record *record,
+                 Read *read, list barcodes, char *linker,
                  int min_length, int max_length,
                  int strip_after_barcode, int strip_before_barcode,
                  bool no_clipping):
-    cdef:
-        Record record
-        Read read
-    read = as_read(t[0], t[1], t[2])
+    cdef bytes barcode
     if no_clipping:
-        record = assign_read_no_clip(read, barcodes, strip_before_barcode)
-        return record
-    
-    if strip_before_barcode > 0:
-        read = pretrim_record_5prime(read, strip_before_barcode)
-    record = assign_read(read, barcodes)
-    if strip_after_barcode > 0:
-        record = trim_record_5prime(record, strip_after_barcode)
-    if not linker == b'':
-        record = cleave_linker(record, linker)
+        barcode = assign_read_no_clip(read, barcodes,
+                                             strip_before_barcode)
+    else:
+        if strip_before_barcode > 0:
+            pretrim_read_5prime(read, strip_before_barcode)
+        barcode = assign_read(read, barcodes)
+        if strip_after_barcode > 0: trim_read_5prime(read, strip_after_barcode)
+        if not linker == b'': cleave_linker(record, linker)
 #    record = trim_trailing_Ns(record)
-    if max_length >= 0:
-        record = truncate_record(record, max_length)
-    return record
+        if max_length >= 0: truncate_read(read, max_length)
+    record.barcode = barcode
         

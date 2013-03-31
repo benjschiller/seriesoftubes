@@ -217,7 +217,7 @@ def split_paired_files(fp_obj, no_gzip=False,
     f2 = open_func2(filename2, "rU")
     records = FasterFastqIterator(f)
     records2 = FasterFastqIterator(f2)
-        
+    
     barcoded_file_pairs = {}
     filenames = []
     if no_gzip:
