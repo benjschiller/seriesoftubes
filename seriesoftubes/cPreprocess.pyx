@@ -145,7 +145,7 @@ cdef bytes match_barcode(bytes seq, list barcodes, int mismatches=1):
                 break
     return accepted
 
-cdef void *pretrim_read_5prime(Read *read, int trim_length):
+cdef void pretrim_read_5prime(Read *read, int trim_length):
     '''
     trim an assigned record from the 5' end
     expects (barcode, (title, seq, qual))
@@ -153,7 +153,7 @@ cdef void *pretrim_read_5prime(Read *read, int trim_length):
     read[0].seq += trim_length
     read[0].qual += trim_length
 
-cdef void *trim_read_5prime(Read *read, int trim_length):
+cdef void trim_read_5prime(Read *read, int trim_length):
     '''
     trim an assigned record from the 5' end
     expects (barcode, (title, seq, qual))
@@ -161,7 +161,7 @@ cdef void *trim_read_5prime(Read *read, int trim_length):
     read[0].seq += trim_length
     read[0].qual += trim_length
     
-cdef void *truncate_read(Read *read, int max_length):
+cdef void truncate_read(Read *read, int max_length):
     '''
     truncate a record so that it is at most max_length
     starting at the 5' end 
@@ -170,7 +170,7 @@ cdef void *truncate_read(Read *read, int max_length):
     read[0].seq[max_length] = b'\0'
     read[0].qual[max_length] = b'\0'
 
-cdef void *trim_read_3prime(Read *read, int trim_length):
+cdef void trim_read_3prime(Read *read, int trim_length):
     '''
     trim a record from the 3' end
     expects (barcode, (title, seq, qual))
@@ -191,7 +191,7 @@ cdef void *trim_read_3prime(Read *read, int trim_length):
 #    record.read.qual[end] = b'\0'
 #    return record
 
-cdef void *cleave_linker(Record *record, char *linker):
+cdef void cleave_linker(Record *record, char *linker):
     cdef:
         Read *read = record[0].read
         int i
@@ -535,7 +535,7 @@ cpdef dict apply_plan_pe(reads, reads2, writer_args, list barcodes=[],
             if result.right == ERR_TOO_SHORT: n_short += 1
     return {'all': i, 'short': n_short, 'linker': n_linker}
 
-cdef void *apply_plan_to_read(Record *record,
+cdef void apply_plan_to_read(Record *record,
                  Read *read, list barcodes, char *linker,
                  int min_length, int max_length,
                  int strip_after_barcode, int strip_before_barcode,
