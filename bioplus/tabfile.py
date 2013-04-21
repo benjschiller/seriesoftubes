@@ -24,16 +24,20 @@ def merge_files(left, right, output, comments='left'):
     return merge_tab_files(file1, file2, output, comments)
 
 def merge_tab_files(file1, file2, output_filename, comments='left'):
-    '''merge_tab_files merges the tab-delimited files represented by TabFile
-       objects left and right, which may have commmented lines. the output is
-       directed to the file named output.
+    '''
+    merge_tab_files merges the tab-delimited files represented by TabFile
+    objects left and right, which may have commmented lines. the output is
+    directed to the file named output.
 
-        There are few modes. If comments='left', comments in left are preserved.
-        If comments='right', comments in right are preserved.
-        If comments='none', no comments are preserved.
-        If comments='all', all comments in left and right are appended to the
-            beginning of output, although they may previously have been
-            contained within the data in left or right.
+    There are few modes. If comments='left', comments in left are preserved.
+
+    If comments='right', comments in right are preserved.
+
+    If comments='none', no comments are preserved.
+
+    If comments='all', all comments in left and right are appended to the
+    beginning of output, although they may previously have been
+    contained within the data in left or right.
 
     See also merge_files
     '''
@@ -296,7 +300,7 @@ re-open to read all rows of the column')
     def write(self, s):
         '''
         writes a string directly to a file,
-        without modification (user must supply \n if desired
+        without modification (user must supply \\n if desired)
         '''
         if self._file_pointer is None:
             raise IOError('File not open for writing.')

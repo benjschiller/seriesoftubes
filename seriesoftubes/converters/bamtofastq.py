@@ -6,7 +6,7 @@ quality score (phred33)
 
 files may be SAM or BAM (autodetected)
 If the file(s) contain paired-end sequences, we will write to two files
-    (in the current working directory)
+(in the current working directory)
 If the files contain single end sequences, we will write to stdout by default
 Output is always to stdout (err goes to stderr, redirect it if you need to)
 """

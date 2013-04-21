@@ -5,7 +5,7 @@
 
 Setup script for seriesoftubes 
 
-Copyright (c) 2010-2012 Benjamin Schiller <benjamin.schiller@ucsf.edu>,
+Copyright (c) 2010-2013 Benjamin Schiller <benjamin.schiller@ucsf.edu>,
                         University of California, San Francisco
 
 All rights reserved.
@@ -22,25 +22,23 @@ except ImportError:
     command_classes =  {}
 
 name = 'seriesoftubes'
-version = '0.9.6.4'
+version = '0.9.6.5'
 
 def main():
     if not float(sys.version[:3])>=2.7:
     	sys.exit("CRITICAL: Python version must greater than or equal to 2.7! python 2.7.3 is recommended!\n")
           
-
-    ext_modules=[Extension('seriesoftubes.cPreprocess', ["seriesoftubes/cPreprocess.pyx"]),
-                 Extension('seriesoftubes.tubes.cTubes', ["seriesoftubes/tubes/cTubes.pyx"])]
+    ext_modules=[Extension('seriesoftubes.cPreprocess', ["seriesoftubes/cPreprocess.pyx"])]
           
     setup(
-        name = name,
-        version = version,
+        name=name,
+        version=version,
         description='An extended pipeline for Solexa ChIP-seq data',
         author='Benjamin Schiller',
         author_email='benjamin.schiller@ucsf.edu',
-        url = 'https://github.com/benjschiller/seriesoftubes',
-        cmdclass= command_classes,
-        install_requires = ['cython>=0.12',
+        url='https://github.com/benjschiller/seriesoftubes',
+        cmdclass=command_classes,
+        install_requires=['cython>=0.12',
                             'distribute>0.6.16',
                             'scripter>=3.4.1',
                             'biopython>=1.56',
@@ -48,15 +46,15 @@ def main():
                             'twobitreader>=2.5',
                             'MACS2>=2.0.10'
                             ],
-        packages = ['bioplus', 'seriesoftubes', 'seriesoftubes.converters',
+        packages=['bioplus', 'seriesoftubes', 'seriesoftubes.converters',
     	   		     'seriesoftubes.fnparsers', 'seriesoftubes.tubes'],
     	package_data= {'bioplus': ['data/genomes.db']},
-        ext_modules = ext_modules,                
-        scripts = [os.path.join('scripts', x) for x in os.listdir('scripts') 
+        ext_modules=ext_modules,                
+        scripts=[os.path.join('scripts', x) for x in os.listdir('scripts') 
                        if not x.startswith('.')],
-    	command_options = {'project': ('setup.py', name),
-    	                   'version': ('setup.py', version)},
-	    classifiers = [
+    	command_options={'project': ('setup.py', name),
+    	                 'version': ('setup.py', version)},
+	    classifiers=[
 			'Development Status :: 3 - Alpha',
 			'License :: OSI Approved :: Artistic License',
 			'Intended Audience :: Developers',
