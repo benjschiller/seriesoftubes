@@ -1,10 +1,9 @@
 import pysam
 import os
 import os.path
-import gzip
-import bz2
 import scripter
 from ..converters.discover import discover_file_format
+
 
 class BowtieFilenameParser(scripter.FilenameParser):
     def __init__(self, filename, *args, **kwargs):
@@ -30,8 +29,15 @@ class BowtieFilenameParser(scripter.FilenameParser):
             else:
                 self.fastq_source = 'Unknown'
         else:
-            raise RuntimeError('Dubious file format')
-    
+            if self.second_file is None:
+                scripter.debug('Skipping file %s with dubious format',
+                               filename)
+                raise scripter.InvalidFileException
+            else:
+                scripter.debug('Skipping files %s, %s with dubious'
+                               'format', filename, self.second_file)
+                raise scripter.InvalidFileException
+
     def check_paired_end(self):
         # check if this is a paired-end file
         # if so, grab its partner
@@ -75,6 +81,7 @@ class BowtieFilenameParser(scripter.FilenameParser):
             return os.path.join(self.output_dir, ref, match_type,
                                 self.with_extension('tmp'))
 
+
 def get_new_pair_info(illumina_name):
     """
     take a filename from CASAVA 1.8 output and figure out whether it's the
@@ -82,21 +89,25 @@ def get_new_pair_info(illumina_name):
     (pair_index, second_file_name, new_output_name).
     """
     end = illumina_name.find('.fastq')
-    if end == -1: return None
+    if end == -1:
+        return None
     name = illumina_name[0:end]
     parts = name.split('_')
-    if len(parts) < 3: return None
+    if len(parts) < 3:
+        return None
     # align split files one at a time
 #    if not parts[-1].split('.')[0] == '001':
 #        scripter.debug('Not the first of a split file, ignoring it')
 #        raise scripter.InvalidFileException
     read = parts[-2]
-    if read == 'R1' or read =='R2':
+    if read == 'R1' or read == 'R2':
         num = parts[-1]
-        second_file = '_'.join(parts[0:-2]) + '_R2_' + num + illumina_name[end:]
+        second_file = '_'.join(parts[0:-2]) + '_R2_' + num + \
+                      illumina_name[end:]
         output_name = '_'.join(parts[0:-2]) + '_' + num + '.fastq'
         return (read[1], second_file, output_name)
     return None
+
 
 def get_pair_info(illumina_name):
     """
@@ -107,17 +118,18 @@ def get_pair_info(illumina_name):
     name_parts = illumina_name.split('.')
     for i in range(len(name_parts)):
         part = name_parts[i]
-        subparts = part.split('_') 
+        subparts = part.split('_')
         if len(subparts) > 0:
             if subparts[0] == 's':
-                if len(subparts) == 1: continue
+                if len(subparts) == 1:
+                    continue
                 pair_index = subparts[2]
                 # lane = subparts[1]
                 join_part = '_'.join(subparts[0:2] + subparts[3:])
-                new_output_name = '.'.join(name_parts[0:i] + [join_part] +\
-                                            name_parts[i+1:])
+                new_output_name = '.'.join(name_parts[0:i] + [join_part] +
+                                           name_parts[i+1:])
                 second_part = '_'.join(subparts[0:2] + ['2'] + subparts[3:])
-                second_name = '.'.join(name_parts[0:i] + [second_part] + 
+                second_name = '.'.join(name_parts[0:i] + [second_part] +
                                        name_parts[i+1:])
                 return (pair_index, second_name, new_output_name)
     return None
