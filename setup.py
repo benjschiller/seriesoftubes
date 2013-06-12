@@ -22,7 +22,7 @@ except ImportError:
     command_classes = {}
 
 name = 'seriesoftubes'
-version = '0.9.6.6'
+version = '0.9.6.7'
 
 
 def main():

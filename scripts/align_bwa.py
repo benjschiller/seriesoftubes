@@ -8,13 +8,14 @@ In align_bwa, there will be a folder for each reference genome
 """
 import logging
 import os
-from os import environ, curdir, makedirs, devnull
+import errno
+from os import environ, curdir, devnull  # , makedirs
 from os.path import join, exists
 from textwrap import dedent
 import sys
 from subprocess import Popen, PIPE, STDOUT
 from scripter import assert_path, path_to_executable, \
-    exit_on_Usage, get_logger, Environment, critical, debug
+    exit_on_Usage, get_logger, Environment, critical, debug, info
 from seriesoftubes.tubes.polledpipe import PolledPipe
 from seriesoftubes.tubes import wait_for_job
 from seriesoftubes.fnparsers import BowtieFilenameParser
@@ -152,7 +153,14 @@ def validate_references(references=None, path_to_bwa='bwa',
                         logger=None, environ_key='SOT_DEFAULT_REFERENCES',
                         target_dir=curdir,
                         **kwargs):
-    makedirs(target_dir, mode=0755)
+    ## Make the output directory, complain if we fail
+    #if os.path.exists(target_dir):
+    #    debug('Output directory %s already exists', target_dir)
+    #else:
+    #    debug('Creating directory "%s"', target_dir)
+    #    makedirs(target_dir, mode=0755)
+    #    if not os.path.exists(target_dir):
+    #        raise IOError('Could not create directory %s' % target_dir)
     debug('Validating references')
     new_references = []
     if references is None:
@@ -166,7 +174,7 @@ def validate_references(references=None, path_to_bwa='bwa',
         if exists(r):
             if not all(map(exists, [r + '.amb', r + '.ann', r + '.bwt',
                                     r + '.pac', r + '.sa'])):
-                debug('Attempting to build bwa index from %s' % r)
+                info('Attempting to build bwa index from %s' % r)
                 new_index = fasta_to_bwa(r, target_dir=target_dir,
                                          path_to_bwa=path_to_bwa)
                 if new_index is not None:
@@ -282,7 +290,13 @@ def align_once(fp_obj, flags, ref, use_quality=False,
     refname = os.path.basename(ref)
     path_to_unsorted = fp_obj.tmp_filename(refname)
     output_dir = os.path.split(path_to_unsorted)[0]
-    fp_obj.check_output_dir(output_dir)
+    try:
+        fp_obj.check_output_dir(output_dir)
+    except OSError, e:
+        if e.errno == errno.EEXIST:
+            pass
+        else:
+            raise
     filename1 = os.path.abspath(fp_obj.input_file)
     second_file = fp_obj.second_file
     file_args = [ref, filename1]
