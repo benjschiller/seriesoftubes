@@ -88,7 +88,7 @@ def get_new_pair_info(illumina_name):
     first or second read (or single-end read) and return a tuple
     (pair_index, second_file_name, new_output_name).
     """
-    end = illumina_name.find('.fastq')
+    end = illumina_name.rfind('.fastq')
     if end == -1:
         return None
     name = illumina_name[0:end]
