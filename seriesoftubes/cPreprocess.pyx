@@ -1,14 +1,17 @@
-# cython: profile=True
+# cython: profile=True, c_string_type=str, c_string_encoding=ascii
 from cpython cimport bool
 from libc.stdlib cimport malloc, free
+from cpython.version cimport PY_MAJOR_VERSION
 
 DEF ERR_TOO_SHORT = 1
 DEF ERR_LINKER = 2
 DEF MAX_FASTQ_SIZE = 131072
 
+
 cdef struct int_pair:
     int left
     int right
+
 
 def FasterFastqIterator(fastq_handle):
     """Cython-ized version of FastqGeneralIterator
@@ -18,7 +21,7 @@ def FasterFastqIterator(fastq_handle):
         int seq_len
     #We need to call handle.readline() at least four times per record,
     #so we'll save a property look up each time:
-    
+
     #Skip any text before the first record (e.g. blank lines, comments?)
     handle_readline = fastq_handle.readline
     while True:
@@ -72,7 +75,7 @@ def FasterFastqIterator(fastq_handle):
                     break
                 #Continue - its just some (more) quality data.
             quality_string += line.rstrip()
-        
+
         if seq_len != len(quality_string):
             raise ValueError("Lengths of sequence and quality values differs "
                              " for %s (%i and %i)." \
@@ -160,11 +163,11 @@ cdef void trim_read_5prime(Read *read, int trim_length):
     '''
     read[0].seq += trim_length
     read[0].qual += trim_length
-    
+
 cdef void truncate_read(Read *read, int max_length):
     '''
     truncate a record so that it is at most max_length
-    starting at the 5' end 
+    starting at the 5' end
     expects (barcode, (title, seq, qual))
     '''
     read[0].seq[max_length] = b'\0'
@@ -236,27 +239,38 @@ cdef bytes assign_read(Read *read, list barcodes):
         if last_part.isalpha():
             # CASAVA 1.8 file
             barcode = match_barcode(<bytes>last_part.rstrip(), barcodes)
-        else:
-            pound_loc = last_part.find('#')
-            slash_loc = last_part[pound_loc:].find('/')
-            if slash_loc != -1:
-                barcode = <bytes>last_part[(pound_loc+1):(pound_loc+slash_loc)]
-            else:
-                barcode = <bytes>last_part[(pound_loc+1):]
-            if barcode==b'0':
+            return barcode
+        # MiSeq files
+        if read.title.count(' ') == 1:
+            title_head2, last_part2 = read.title.split(' ', 1)
+            if last_part2.count(':') == 3:
+                # regular barcoded read, extract from sequence
                 barcode = match_barcode(<bytes>read.seq, barcodes)
                 barcode_len = len(barcode)
                 read.seq += barcode_len
                 read.qual += barcode_len
-            elif barcode.isdigit():
-                # then we have a numbered index from Illumina, just use it as-is
-                #record.barcode = barcode
-                pass
-            elif barcode.isalpha():
-                # then we already extracted the barcode at some point, try to match it
-                barcode = match_barcode(barcode, barcodes)
-            else:
-                barcode = b''
+                return barcode
+        # old files
+        pound_loc = last_part.find('#')
+        slash_loc = last_part[pound_loc:].find('/')
+        if slash_loc != -1:
+            barcode = <bytes>last_part[(pound_loc+1):(pound_loc+slash_loc)]
+        else:
+            barcode = <bytes>last_part[(pound_loc+1):]
+        if barcode==b'0':
+            barcode = match_barcode(<bytes>read.seq, barcodes)
+            barcode_len = len(barcode)
+            read.seq += barcode_len
+            read.qual += barcode_len
+        elif barcode.isdigit():
+            # then we have a numbered index from Illumina, just use it as-is
+            #record.barcode = barcode
+            pass
+        elif barcode.isalpha():
+            # then we already extracted the barcode at some point, try to match it
+            barcode = match_barcode(barcode, barcodes)
+        else:
+            barcode = b''
     return barcode
 
 cdef bytes assign_read_no_clip(Read *read, list barcodes, int offset):
@@ -281,6 +295,14 @@ cdef bytes assign_read_no_clip(Read *read, list barcodes, int offset):
         if last_part.isalpha():
             # CASAVA 1.8 file
             barcode = match_barcode(<bytes>last_part.rstrip(), barcodes)
+        # MiSeq files
+        if read.title.count(' ') == 1:
+            title_head2, last_part2 = read.title.split(' ', 1)
+            if last_part2.count(':') == 3:
+                # regular barcoded read, extract from sequence
+                barcode = match_barcode(<bytes>read.seq, barcodes)
+                barcode_len = len(barcode)
+                return barcode
         else:
             pound_loc = last_part.find('#')
             slash_loc = last_part[pound_loc:].find('/')
@@ -304,9 +326,10 @@ cdef bytes assign_read_no_clip(Read *read, list barcodes, int offset):
 cdef bool too_short(Read *read, int min_length):
     cdef char c
     cdef int i = 0, L = 0
-    for c in read.seq:
+    for c in bytes(read.seq):
         L += 1
-        if c == b'N': i += 1
+        if c == b'N':
+            i += 1
     return L - i < min_length
 
 cdef int write_record(Record *record, barcoded_files=None,
@@ -316,7 +339,7 @@ cdef int write_record(Record *record, barcoded_files=None,
     """
     write the assigned_record to the correct barcode file
     an assigned_record is a (barcode, (title, seq, qual)) (all strs)
-    
+
     will not work unless you provide a dictionary of barcoded_files and an
     unmatched_file object
     """
@@ -332,16 +355,17 @@ cdef int write_record(Record *record, barcoded_files=None,
         bool is_too_short = too_short(record.read, min_length)
         bool is_processed = barcoded_files is None
         bool no_barcode = (barcode == '')
+
     # check if record 1 is valid
     if is_linker: return ERR_LINKER
     elif is_too_short: return ERR_TOO_SHORT
-        
+
     # produce lines
-    if is_processed: processed_file.write(line) 
+    if is_processed: processed_file.write(line)
     elif no_barcode: unmatched_file.write(line)
     else: barcoded_files[barcode].write(line)
     return 0
-        
+
 cdef int_pair write_record_pair(Record *record, Record *record2,
                                 object barcoded_file_pairs=None,
                                 object unmatched_files=None,
@@ -352,21 +376,23 @@ cdef int_pair write_record_pair(Record *record, Record *record2,
     """
     write the assigned_record to the correct barcode file
     an assigned_record is a (barcode, (title, seq, qual)) (all strs)
-    
+
     will not work unless you provide a dictionary of barcoded_file_pairs and
     unmatched_files and mismatched_files (2-tuples of file object)
     """
     cdef:
         int_pair ret
-        
-        str barcode, title, seq, qual, line
+
+        object barcode, title, seq, qual, line
         int problem = 0, problem2 = 0
         bool is_linker1, is_too_short1
-                
-        str barcode2, title2, seq2, qual2, line2
+
+        object barcode2, title2, seq2, qual2, line2
         bool is_linker2, is_too_short2
         bool is_processed = (barcoded_file_pairs is None)
-    
+
+    ret.left = 0
+    ret.right = 0
     barcode = record.barcode
     title = record.read.title
     seq = record.read.seq
@@ -374,7 +400,7 @@ cdef int_pair write_record_pair(Record *record, Record *record2,
     line = "@%s\n%s\n+%s\n%s\n" % (title, seq, title, qual)
     is_linker1 = len(seq) == 0 and (not linker == '') and barcode == linker
     is_too_short1 = too_short(record.read, min_length)
-            
+
     barcode2 = record2.barcode
     title2 = record2.read.title
     seq2 = record2.read.seq
@@ -382,11 +408,11 @@ cdef int_pair write_record_pair(Record *record, Record *record2,
     line2 = "@%s\n%s\n+%s\n%s\n" % (title2, seq2, title2, qual2)
     is_linker2 = len(seq2) == 0 and (not linker == '') and barcode2 == linker
     is_too_short2 = too_short(record2.read, min_length)
-    
+
     # check if record 1 is valid
     if is_linker1: problem = ERR_LINKER
     elif is_too_short1: problem = ERR_TOO_SHORT
-    
+
     # check if record 2 is valid
     if is_linker2: problem2 = ERR_LINKER
     elif is_too_short2: problem2 = ERR_TOO_SHORT
@@ -395,7 +421,6 @@ cdef int_pair write_record_pair(Record *record, Record *record2,
 
     # abort write if both reads have problems
     if (not problem == 0) or (not problem2 == 0):
-    # if only one read has a problem, use write_record instead
         if not problem2 == 0:
             if is_processed: orphaned_read_files[0].write(line)
             else: mismatched_files[0].write(line)
@@ -403,7 +428,7 @@ cdef int_pair write_record_pair(Record *record, Record *record2,
             if is_processed: orphaned_read_files[1].write(line2)
             else: mismatched_files[1].write(line2)
         return ret
-    
+
     # select output files
     if barcoded_file_pairs is None:
         output_file = processed_files[0]
@@ -499,9 +524,9 @@ cpdef dict apply_plan_pe(reads, reads2, writer_args, list barcodes=[],
             except StopIteration: pass
             else: raise SyntaxWarning('More reads left in second file')
             finally: break
-        
+
         t2 = reads2.next()
-        
+
         read.title = <bytes>(t[0])
         read.seq = <bytes>(t[1])
         read.qual = <bytes>(t[2])
@@ -519,7 +544,7 @@ cpdef dict apply_plan_pe(reads, reads2, writer_args, list barcodes=[],
                  min_length, max_length,
                  strip_after_barcode, strip_before_barcode,
                  no_clipping)
-    
+
         result = write_record_pair(record, record2,
                               writer_args['barcoded_file_pairs'],
                               writer_args['unmatched_files'],
@@ -553,4 +578,4 @@ cdef void apply_plan_to_read(Record *record,
 #    record = trim_trailing_Ns(record)
         if max_length >= 0: truncate_read(read, max_length)
     record.barcode = barcode
-        
+

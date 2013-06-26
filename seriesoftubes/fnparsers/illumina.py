@@ -20,7 +20,7 @@ def get_new_pair_info(illumina_name):
         num = parts[-1]
         second_file = '_'.join(parts[0:-2]) + '_R2_' + num + \
                       illumina_name[end:]
-        return (read[1], second_file)
+        return (read, second_file)
     return None
 
 
@@ -32,8 +32,6 @@ class BarcodeFilenameParser(scripter.FilenameParser):
         # check for old-style
         if os.path.splitext(protoname)[-3:] == 'all':
             protoname = protoname[0:-4]
-        if kwargs['no_target']:
-            self.output_dir = self.input_dir
 
         # check if this is a paired-end file
         # if so, grab its partner
@@ -43,19 +41,26 @@ class BarcodeFilenameParser(scripter.FilenameParser):
         # try new style first
         new_info = get_new_pair_info(illumina_name)
         if new_info is not None:
+            scripter.debug('NOTICE: Detected new-style paired read file.')
             read = new_info[0]
             if read == 'R2':
                 scripter.debug('This is the second file, ignoring it.')
                 raise scripter.InvalidFileException(input_file)
             elif read == 'R1':
-                second_file = new_info[1]
+                second_file = os.path.join(self.input_dir, new_info[1])
                 try:
                     scripter.assert_path(second_file)
                     scripter.debug('Found %s', second_file)
                     self.second_file = second_file
+                    self.protoname2 = os.path.splitext(
+                        os.path.basename(second_file))[0]
                     paired_end = True
+                except IOError:
+                    scripter.debug('Failed to find paired end file')
+                    paired_end = False
             else:
                 scripter.debug('Failed to find paired end')
+                paired_end = False
         elif illumina_name.count('_') >= 3:
             scripter.debug('NOTICE: Detected paired read file.')
             iln_parts = illumina_name.split('_')
@@ -65,12 +70,12 @@ class BarcodeFilenameParser(scripter.FilenameParser):
                 second_file = os.sep.join([self.input_dir,
                                            '_'.join(iln_parts[0:2] + ['2']
                                                     + iln_parts[3:])])
-                self.protoname2 = os.path.splitext(
-                    os.path.basename(second_file))[0]
                 try:
                     scripter.assert_path(second_file)
                     scripter.debug('Found %s', second_file)
                     self.second_file = second_file
+                    self.protoname2 = os.path.splitext(
+                        os.path.basename(second_file))[0]
                     paired_end = True
                 except IOError:
                     scripter.debug('Failed to find paired end file')
