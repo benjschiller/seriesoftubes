@@ -73,7 +73,7 @@ def main():
     bgroup = parser.add_argument_group('barcodes',
                                        'Specify sequence barcodes in the '
                                        'sample(s)')
-    bgroup.add_argument('-b', '--barcodes', action='append', type=valid_seq,
+    bgroup.add_argument('-b', '--barcodes', action='append', type=valid_seq, default=[],
                         help="Specify a barcode sequence. May be invoked "
                              "multiple times")
     bgroup.add_argument('--kry-barcodes', dest='barcodes',
@@ -97,7 +97,7 @@ def write_config(barcodes=None, min_length=None, max_length=None,
                  *args, **kwargs):
     config = SafeConfigParser()
     config.add_section('main')
-    if barcodes is not None:
+    if barcodes is not None and len(barcodes) > 0:
         config.set('main', 'barcodes', ','.join(barcodes))
     config.set('main', 'linker', linker)
     config.set('main', 'min-length', str(min_length))
