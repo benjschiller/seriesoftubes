@@ -1,3 +1,18 @@
-seriesoftubes
+# Historical archive
+
+This repository is a historical archive of `seriesoftubes`, a grad-school-era
+pipeline for Solexa / ChIP-seq data analysis.
+
+It was built around the Python 2.7 scientific Python and bioinformatics stack of
+that period, including `scripter`, `pysam`, `twobitreader`, and MACS2. It is no
+longer maintained and is kept public for provenance rather than current use.
+
+For the small job-execution engine this project depended on, see:
+
+https://github.com/benjschiller/scripter
+
+## Original README
+
+# seriesoftubes
 
 An extended pipeline for Solexa ChIP-seq data
